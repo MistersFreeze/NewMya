@@ -1,0 +1,20 @@
+{
+  "name": "loader-hub",
+  "version": "1.0.0",
+  "description": "roblox-ts sources for the New_Mya Krokmou-style loader hub shell",
+  "main": "out/init.luau",
+  "scripts": {
+    "build": "rbxtsc --type package --luau",
+    "watch": "rbxtsc -w --type package --luau"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@rbxts/compiler-types": "^3.0.0-types.0",
+    "@rbxts/types": "^1.0.918",
+    "roblox-ts": "^3.0.0",
+    "typescript": "^6.0.3"
+  }
+}

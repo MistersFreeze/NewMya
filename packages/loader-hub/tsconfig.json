@@ -1,0 +1,20 @@
+{
+	"compilerOptions": {
+		"typeRoots": ["node_modules/@rbxts"],
+		"rootDir": "src",
+		"outDir": "out",
+		"baseUrl": "src",
+		"incremental": true,
+		"tsBuildInfoFile": "out/tsconfig.tsbuildinfo",
+		"noLib": true,
+		"strict": true,
+		"module": "commonjs",
+		"moduleDetection": "force",
+		"moduleResolution": "node10",
+		"allowSyntheticDefaultImports": true,
+		"resolveJsonModule": true,
+		"isolatedModules": true,
+		"downlevelIteration": true
+	},
+	"include": ["src"]
+}
