@@ -191,46 +191,89 @@ return function(BASE_URL, config)
 	end
 
 	-- ── Bind widget factory ───────────────────────────────────────────────────────
-	-- Uses AddBind (toggle row + inline key-pill + mode-pill from FluentModded).
-	-- If AddBind returns any table the toggle row already exists → no fallback toggle.
-	-- Only falls back to plain AddToggle when AddBind errored or returned nil/non-table.
+	-- Two rows: AddToggle (enable/disable) + AddKeybind (activation key + mode).
+	-- Keybind changes are auto-saved to the "autoload" config so they persist.
+	-- Modes: Always (active when toggle on), Hold (hold key), Toggle (press to latch).
 
 	local function makeBind(section, opts)
-		local enabled = opts.default or false
+		local enabled     = opts.default or false
+		local toggleState = false
 
-		local bindOk, h = pcall(function()
-			return section:AddBind(opts.key, {
-				Title     = opts.title or "Enable",
-				Default   = opts.default or false,
-				onEnabled = function(v)
-					enabled = v
-					if opts.onEnabled then opts.onEnabled(v) end
-				end,
-			})
-		end)
-
-		if bindOk and type(h) == "table" then
-			-- Row created by AddBind. isActive includes key+mode logic when available.
-			return {
-				isActive   = type(h.isActive)    == "function" and h.isActive    or function() return enabled end,
-				getEnabled = type(h.getEnabled)  == "function" and h.getEnabled  or function() return enabled end,
-				unmount    = type(h.bindUnmount) == "function" and h.bindUnmount or function() end,
-			}
-		end
-
-		-- AddBind completely failed (error or nil) — safe to add a plain toggle.
 		section:AddToggle(opts.key, {
 			Title    = opts.title or "Enable",
 			Default  = enabled,
 			Callback = function(v)
-				enabled = v
+				enabled     = v
+				toggleState = false
 				if opts.onEnabled then opts.onEnabled(v) end
 			end,
 		})
+
+		local kb      = nil
+		local kbConn  = nil
+
+		pcall(function()
+			kb = section:AddKeybind(opts.key .. "_kb", {
+				Title   = "Keybind",
+				Default = "None",
+				Mode    = "Toggle",
+			})
+		end)
+
+		if kb then
+			-- Track Toggle-mode latch state via InputBegan.
+			pcall(function()
+				kbConn = UserInputService.InputBegan:Connect(function(input, gpe)
+					if gpe or not enabled then return end
+					local mode = kb.Mode or "Toggle"
+					if mode ~= "Toggle" then return end
+					local kv = kb.Value
+					if not kv or kv == "None" then return end
+					local ok, kc = pcall(function() return Enum.KeyCode[kv] end)
+					if ok and kc and kc ~= Enum.KeyCode.Unknown and input.KeyCode == kc then
+						toggleState = not toggleState
+					end
+					local ok2, mb = pcall(function() return Enum.UserInputType[kv] end)
+					if ok2 and mb and input.UserInputType == mb then
+						toggleState = not toggleState
+					end
+				end)
+			end)
+			-- Auto-save whenever the keybind changes.
+			pcall(function()
+				kb:OnChanged(function()
+					toggleState = false
+					pcall(function() SaveManager:Save("autoload") end)
+				end)
+			end)
+		end
+
+		local function isActive()
+			if not enabled then return false end
+			if not kb then return true end
+			local kv   = kb.Value
+			local mode = kb.Mode or "Toggle"
+			if not kv or kv == "None" or kv == "" or mode == "Always" then return true end
+			if mode == "Hold" then
+				local ok, kc = pcall(function() return Enum.KeyCode[kv] end)
+				if ok and kc and kc ~= Enum.KeyCode.Unknown then
+					return UserInputService:IsKeyDown(kc)
+				end
+				local ok2, mb = pcall(function() return Enum.UserInputType[kv] end)
+				if ok2 and mb then
+					return UserInputService:IsMouseButtonPressed(mb)
+				end
+				return false
+			end
+			return toggleState
+		end
+
 		return {
-			isActive   = function() return enabled end,
+			isActive   = isActive,
 			getEnabled = function() return enabled end,
-			unmount    = function() end,
+			unmount    = function()
+				if kbConn then pcall(function() kbConn:Disconnect() end) end
+			end,
 		}
 	end
 
