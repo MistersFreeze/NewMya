@@ -675,35 +675,6 @@ return function(BASE_URL: string, config: { [string]: any })
 			notify(Fluent, "Dumper", "Launched", 3)
 		end,
 	})
-	scriptsSection:AddButton({
-		Title = "Run Anti VC Ban",
-		Icon = "solar/shield-bold",
-		Callback = function()
-			local url = config.ANTI_VC_BAN_URL
-			if typeof(url) ~= "string" or #url == 0 then
-				notify(Fluent, "Anti VC Ban", "Set ANTI_VC_BAN_URL in config.", 4)
-				return
-			end
-			local ok, src = pcall(function()
-				return game:HttpGet(url, true)
-			end)
-			if not ok or typeof(src) ~= "string" then
-				notify(Fluent, "Anti VC Ban", "Fetch failed.", 4)
-				return
-			end
-			local chunk, compileErr = loadstring(src, "@Mya/AntiVCBan")
-			if typeof(chunk) ~= "function" then
-				notify(Fluent, "Anti VC Ban", "Compile failed: " .. tostring(compileErr), 4)
-				return
-			end
-			local rok, runErr = pcall(chunk)
-			if not rok then
-				notify(Fluent, "Anti VC Ban", "Runtime failed: " .. tostring(runErr), 4)
-				return
-			end
-			notify(Fluent, "Anti VC Ban", "Launched", 3)
-		end,
-	})
 
 	local creditsSection = CreditsTab:AddSection("Credits")
 	creditsSection:AddParagraph({
