@@ -10,7 +10,12 @@
       "Bash(grep -n \"^[[:space:]]*local.*Add\" \"C:\\\\\\\\Users\\\\\\\\Lanzo\\\\\\\\Desktop\\\\\\\\New_Mya\\\\\\\\lib\\\\\\\\FluentModded.lua\")",
       "Bash(grep:*)",
       "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\Lanzo\\\\Desktop\\\\MyaLoader\" -Recurse -File)",
-      "Bash(Select-Object FullName)"
+      "Bash(Select-Object FullName)",
+      "Bash(git fetch *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(git commit *)"
     ]
   }
 }
