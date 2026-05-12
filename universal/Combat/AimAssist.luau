@@ -98,16 +98,28 @@ return function(ctx)
 		return result.Instance ~= nil and result.Instance:IsDescendantOf(targetChar)
 	end
 
+	local function inViewport(sp, vp)
+		return sp.X >= -50 and sp.X <= vp.X + 50
+			and sp.Y >= -50 and sp.Y <= vp.Y + 50
+	end
+
 	local function getBestTarget(cam, anchor)
+		local vp = cam.ViewportSize
+
 		if keepTarget and lockedPlayer then
 			local plr = lockedPlayer
-			if plr.Parent and plr.Character and not ctx.isSameTeam(plr) then
-				local part = plr.Character:FindFirstChild(targetPart)
+			local char = plr.Parent and plr.Character
+			local hum  = char and char:FindFirstChildWhichIsA("Humanoid")
+			if char and hum and hum.Health > 0 and not ctx.isSameTeam(plr) then
+				local part = char:FindFirstChild(targetPart)
 				if part and part:IsA("BasePart") then
 					local sv = cam:WorldToViewportPoint(part.Position)
 					if sv.Z > 0 then
-						local sp   = Vector2.new(sv.X, sv.Y)
-						if (sp - anchor).Magnitude <= aimFov and losOk(cam.CFrame.Position, part.Position, plr.Character) then
+						local sp = Vector2.new(sv.X, sv.Y)
+						if inViewport(sp, vp)
+							and (sp - anchor).Magnitude <= aimFov
+							and losOk(cam.CFrame.Position, part.Position, char)
+						then
 							return sp
 						end
 					end
@@ -129,7 +141,8 @@ return function(ctx)
 			if not part or not part:IsA("BasePart") then continue end
 			local sv = cam:WorldToViewportPoint(part.Position)
 			if sv.Z <= 0 then continue end
-			local sp   = Vector2.new(sv.X, sv.Y)
+			local sp = Vector2.new(sv.X, sv.Y)
+			if not inViewport(sp, vp) then continue end
 			local dist = (sp - anchor).Magnitude
 			if dist < aimFov and dist < bestDist and losOk(cam.CFrame.Position, part.Position, char) then
 				bestDist = dist
@@ -248,6 +261,16 @@ return function(ctx)
 
 		local dx = bestSp.X - anchor.X
 		local dy = bestSp.Y - anchor.Y
+
+		-- Hard cap per-frame movement to the FOV radius.
+		-- Prevents a sudden large delta (dying target, edge-of-camera Z flip, etc.)
+		-- from spinning the camera 360° or launching into the sky.
+		local maxMove = math.max(aimFov, 50)
+		local mag = math.sqrt(dx * dx + dy * dy)
+		if mag > maxMove then
+			local s = maxMove / mag
+			dx, dy  = dx * s, dy * s
+		end
 
 		if typeof(mousemoverel) ~= "function" then return end
 
