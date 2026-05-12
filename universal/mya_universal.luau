@@ -472,9 +472,6 @@ return function(BASE_URL, config)
 
 		-- Config tab: full save/load system.
 		pcall(function() SaveManager:BuildConfigSection(configTab) end)
-		if FloatingButtonManager then
-			pcall(function() FloatingButtonManager:BuildConfigSection(configTab) end)
-		end
 
 		-- Settings tab: interface options only.
 		pcall(function() InterfaceManager:BuildInterfaceSection(settingsTab) end)
@@ -487,11 +484,8 @@ return function(BASE_URL, config)
 			InterfaceManager:SaveSettings()
 		end)
 
-		-- Load autoload configs AFTER building sections so all Options are registered.
+		-- Load autoload config AFTER building sections so all Options are registered.
 		pcall(function() SaveManager:LoadAutoloadConfig() end)
-		if FloatingButtonManager then
-			pcall(function() FloatingButtonManager:LoadAutoloadConfig() end)
-		end
 	end)
 
 	task.defer(function()

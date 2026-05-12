@@ -686,7 +686,7 @@ local aa = {
             local ok,dec=pcall(httpService.JSONDecode,httpService,readfile(f))
             if not ok then return false,"decode error" end
             for _,opt in next,dec.objects do
-                if self.Parser[opt.type] then task.spawn(function() self.Parser[opt.type].Load(opt.idx,opt) end) end
+                if self.Parser[opt.type] then pcall(self.Parser[opt.type].Load,opt.idx,opt) end
             end
             return true
         end
