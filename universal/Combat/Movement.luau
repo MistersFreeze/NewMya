@@ -222,7 +222,7 @@ return function(ctx)
 	end)
 
 	-- ─────────────────────────────────────────────────────────────────────────────
-	-- UI
+	-- UI  (one section per feature, mirroring Visuals / Combat structure)
 	-- ─────────────────────────────────────────────────────────────────────────────
 
 	-- Fly -------------------------------------------------------------------------
@@ -231,6 +231,7 @@ return function(ctx)
 	local flyBind = makeBind(flySection, {
 		key   = "mvFlyOn01x",
 		title = "Fly",
+		icon  = "solar/wind-bold",
 	})
 
 	flySection:AddSlider("mvFlySp1x", {
@@ -240,6 +241,15 @@ return function(ctx)
 		Max      = 500,
 		Rounding = 0,
 		Callback = function(v) flySpeed = v end,
+	})
+
+	-- Noclip ----------------------------------------------------------------------
+	local ncSection = movementTab:AddSection("Noclip")
+
+	local noclipBind = makeBind(ncSection, {
+		key   = "mvNcOn001x",
+		title = "Noclip",
+		icon  = "solar/ghost-bold",
 	})
 
 	-- Walk Speed ------------------------------------------------------------------
@@ -276,14 +286,6 @@ return function(ctx)
 		Max      = 500,
 		Rounding = 0,
 		Callback = function(v) jpTarget = v end,
-	})
-
-	-- Noclip ----------------------------------------------------------------------
-	local ncSection = movementTab:AddSection("Noclip")
-
-	local noclipBind = makeBind(ncSection, {
-		key   = "mvNcOn001x",
-		title = "Noclip",
 	})
 
 	-- ─────────────────────────────────────────────────────────────────────────────

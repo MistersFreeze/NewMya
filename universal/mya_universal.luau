@@ -204,6 +204,7 @@ return function(BASE_URL, config)
 
 		section:AddToggle(opts.key, {
 			Title    = opts.title or "Enable",
+			Icon     = opts.icon or nil,
 			Default  = enabled,
 			Callback = function(v)
 				enabled     = v
@@ -480,7 +481,14 @@ return function(BASE_URL, config)
 	task.defer(function()
 		if not universalActive then return end
 
-		-- Config tab: full save/load system.
+		-- Config tab: header + full save/load system.
+		pcall(function()
+			local cfgInfo = configTab:AddSection("Configs")
+			cfgInfo:AddParagraph({
+				Title   = "How to use",
+				Content = "Type a name → Create config to save all current settings.\nSelect a config from the list → Load config to restore.\nSet as autoload to auto-apply on next inject.",
+			})
+		end)
 		pcall(function() SaveManager:BuildConfigSection(configTab) end)
 
 		-- Settings tab: interface options only.

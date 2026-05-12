@@ -44,6 +44,32 @@ Every new game script under `New_Mya/games/` or `New_Mya/universal/` **must** fo
 - `MinimizeKey = Enum.KeyCode.RightShift` on `CreateWindow`.
 - Add `MenuKeybind` via `InterfaceManager:BuildInterfaceSection` so users can change it.
 
+### Tab and section structure (mandatory)
+
+Every window **must** organize its UI as: **one tab per category → one section per feature**. This mirrors how Visuals and Combat are structured in the Universal.
+
+**Tab layout rules:**
+- Each major category (Visuals, Combat, Movement, Config, Settings) is a top-level tab with `Window:AddTab({ Title = "...", Icon = "solar/..." })`.
+- Never put unrelated features in the same tab.
+- Always include a dedicated **Config** tab (`Window:AddTab({ Title = "Config", Icon = "solar/diskette-bold" })`) with `SaveManager:BuildConfigSection(configTab)` and a brief instruction paragraph above it.
+- Always include a **Settings** tab with `InterfaceManager:BuildInterfaceSection(settingsTab)`.
+
+**Section layout rules:**
+- Each feature gets its own section: `tab:AddSection("Feature Name")`.
+- The first element in every feature section **must** be the enable toggle or `makeBind` call, with an `Icon` matching the feature (e.g. `"solar/eye-bold"` for ESP, `"solar/wind-bold"` for Fly).
+- Section order within a tab should go from most-used to least-used.
+- Fluent does not have a `AddFolder` element — sections are the correct grouping primitive.
+
+**Config tab template:**
+```lua
+local cfgInfoSec = configTab:AddSection("Configs")
+cfgInfoSec:AddParagraph({
+    Title   = "How to use",
+    Content = "Type a name → Create config.\nSelect → Load config.\nSet as autoload for auto-apply.",
+})
+SaveManager:BuildConfigSection(configTab)
+```
+
 ## Local test
 
 Set `MYA_LOCAL_ROOT` to your clone path; use `loader_local` pattern or HttpGet to `http://127.0.0.1:8080/` with repo root served.
