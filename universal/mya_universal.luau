@@ -191,29 +191,12 @@ return function(BASE_URL, config)
 	end
 
 	-- ── Bind widget factory ───────────────────────────────────────────────────────
-	-- Tries section:AddBind (FluentModded key+mode pills).
-	-- Falls back to a plain AddToggle so combat features always work even if
-	-- the library version doesn't expose AddBind on the section object.
+	-- Uses a plain Toggle. AddBind from FluentModded always creates its own toggle
+	-- row internally even when it fails to return a usable object, which caused a
+	-- duplicate button bug. A simple AddToggle is reliable and never duplicates.
 
 	local function makeBind(section, opts)
 		local enabled = opts.default or false
-
-		local ok, h = pcall(function()
-			return section:AddBind(opts.key, {
-				Title     = opts.title or "Enable",
-				Default   = opts.default or false,
-				onEnabled = opts.onEnabled,
-			})
-		end)
-		if ok and h and typeof(h.isActive) == "function" then
-			return {
-				isActive   = h.isActive,
-				getEnabled = h.getEnabled,
-				unmount    = h.bindUnmount or function() end,
-			}
-		end
-
-		-- Fallback: plain toggle (always active while on; no separate key)
 		section:AddToggle(opts.key, {
 			Title    = opts.title or "Enable",
 			Default  = enabled,
