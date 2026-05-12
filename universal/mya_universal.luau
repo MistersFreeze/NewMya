@@ -153,6 +153,7 @@ return function(BASE_URL, config)
 	local visualsTab  = Window:AddTab({ Title = "Visuals",  Icon = "solar/eye-bold" })
 	local combatTab   = Window:AddTab({ Title = "Combat",   Icon = "solar/target-bold" })
 	local movementTab = Window:AddTab({ Title = "Movement", Icon = "solar/running-bold" })
+	local configTab   = Window:AddTab({ Title = "Config",   Icon = "solar/diskette-bold" })
 	local settingsTab = Window:AddTab({ Title = "Settings", Icon = "solar/settings-bold" })
 
 	-- ── Shared helpers ────────────────────────────────────────────────────────────
@@ -200,12 +201,14 @@ return function(BASE_URL, config)
 	end
 
 	-- ── Bind widget factory ───────────────────────────────────────────────────────
-	-- Two rows: AddToggle (enable/disable) + AddKeybind (activation key + mode).
-	-- Keybind changes are auto-saved to the "autoload" config so they persist.
-	-- Modes: Always (active when toggle on), Hold (hold key), Toggle (press to latch).
+	-- Three rows: Enable toggle + Keybind key picker + Bind Mode dropdown.
+	-- Default mode "Always" = feature active whenever Enable is ON, no key needed.
+	-- "Hold" = must hold the bound key. "Toggle" = press key to latch on/off.
+	-- Keybind + mode are auto-saved to the "autoload" config on change.
 
 	local function makeBind(section, opts)
 		local enabled     = opts.default or false
+		local bindMode    = "Always"
 		local toggleState = false
 
 		section:AddToggle(opts.key, {
@@ -225,21 +228,31 @@ return function(BASE_URL, config)
 			kb = section:AddKeybind(opts.key .. "_kb", {
 				Title   = "Keybind",
 				Default = "None",
-				Mode    = "Toggle",
 			})
 		end)
 
+		section:AddDropdown(opts.key .. "_mode", {
+			Title    = "Bind Mode",
+			Values   = { "Always", "Hold", "Toggle" },
+			Default  = "Always",
+			NoSearch = true,
+			Callback = function(v)
+				bindMode    = v
+				toggleState = false
+			end,
+		})
+
 		if kb then
+			-- Track Toggle-mode latch via key press.
 			pcall(function()
 				kbConn = UserInputService.InputBegan:Connect(function(input, gpe)
-					if gpe or not enabled then return end
-					local mode = kb.Mode or "Toggle"
-					if mode ~= "Toggle" then return end
+					if gpe or not enabled or bindMode ~= "Toggle" then return end
 					local kv = kb.Value
 					if not kv or kv == "None" then return end
 					local ok, kc = pcall(function() return Enum.KeyCode[kv] end)
 					if ok and kc and kc ~= Enum.KeyCode.Unknown and input.KeyCode == kc then
 						toggleState = not toggleState
+						return
 					end
 					local ok2, mb = pcall(function() return Enum.UserInputType[kv] end)
 					if ok2 and mb and input.UserInputType == mb then
@@ -247,6 +260,7 @@ return function(BASE_URL, config)
 					end
 				end)
 			end)
+			-- Auto-save whenever the keybind key changes.
 			pcall(function()
 				kb:OnChanged(function()
 					toggleState = false
@@ -257,11 +271,11 @@ return function(BASE_URL, config)
 
 		local function isActive()
 			if not enabled then return false end
-			if not kb then return true end
-			local kv   = kb.Value
-			local mode = kb.Mode or "Toggle"
-			if not kv or kv == "None" or kv == "" or mode == "Always" then return true end
-			if mode == "Hold" then
+			-- "Always": active whenever enabled, regardless of key.
+			if bindMode == "Always" then return true end
+			local kv = kb and kb.Value
+			if not kv or kv == "None" or kv == "" then return true end
+			if bindMode == "Hold" then
 				local ok, kc = pcall(function() return Enum.KeyCode[kv] end)
 				if ok and kc and kc ~= Enum.KeyCode.Unknown then
 					return UserInputService:IsKeyDown(kc)
@@ -270,6 +284,7 @@ return function(BASE_URL, config)
 				if ok2 and mb then return UserInputService:IsMouseButtonPressed(mb) end
 				return false
 			end
+			-- "Toggle": latch state driven by kbConn above.
 			return toggleState
 		end
 
@@ -454,9 +469,16 @@ return function(BASE_URL, config)
 
 	task.defer(function()
 		if not universalActive then return end
+
+		-- Config tab: full save/load system.
+		pcall(function() SaveManager:BuildConfigSection(configTab) end)
+		if FloatingButtonManager then
+			pcall(function() FloatingButtonManager:BuildConfigSection(configTab) end)
+		end
+
+		-- Settings tab: interface options only.
 		pcall(function() InterfaceManager:BuildInterfaceSection(settingsTab) end)
-		-- Force MinimizeKeybind to RightShift after the section is built so any
-		-- previously saved "Delete" or "LeftControl" value cannot take effect.
+		-- Force MinimizeKeybind to RightShift after the section is built.
 		pcall(function()
 			if Fluent.MinimizeKeybind then
 				Fluent.MinimizeKeybind:SetValue("RightShift")
@@ -464,10 +486,8 @@ return function(BASE_URL, config)
 			ifacePre.MenuKeybind = "RightShift"
 			InterfaceManager:SaveSettings()
 		end)
-		pcall(function() SaveManager:BuildConfigSection(settingsTab) end)
-		if FloatingButtonManager then
-			pcall(function() FloatingButtonManager:BuildConfigSection(settingsTab) end)
-		end
+
+		-- Load autoload configs AFTER building sections so all Options are registered.
 		pcall(function() SaveManager:LoadAutoloadConfig() end)
 		if FloatingButtonManager then
 			pcall(function() FloatingButtonManager:LoadAutoloadConfig() end)
