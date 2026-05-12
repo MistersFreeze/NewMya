@@ -157,14 +157,11 @@ return function(BASE_URL, config)
 	local visParams = RaycastParams.new()
 	visParams.FilterType  = Enum.RaycastFilterType.Exclude
 	visParams.IgnoreWater = true
-	-- Exclude ALL player characters so other players don't block LOS checks.
-	-- Rebuilt each frame inside the render loop.
+	-- Only exclude the LOCAL player's character (same as MyaLoader reference).
+	-- Other players' bodies are intentional blockers; the target's own body counts as visible.
 	local function updateSharedVisFilter()
-		local chars = {}
-		for _, plr in ipairs(Players:GetPlayers()) do
-			if plr.Character then chars[#chars + 1] = plr.Character end
-		end
-		visParams.FilterDescendantsInstances = chars
+		local c = localPlayer.Character
+		visParams.FilterDescendantsInstances = c and { c } or {}
 	end
 	updateSharedVisFilter()
 
@@ -377,6 +374,13 @@ return function(BASE_URL, config)
 		return pc
 	end
 
+	connections[#connections + 1] = localPlayer.CharacterAdded:Connect(function()
+		task.defer(updateSharedVisFilter)
+	end)
+	connections[#connections + 1] = localPlayer.CharacterRemoving:Connect(function()
+		task.defer(updateSharedVisFilter)
+	end)
+
 	connections[#connections + 1] = Players.PlayerRemoving:Connect(function(p)
 		playerCache[p] = nil
 		for _, mod in ipairs(modules) do
@@ -388,9 +392,6 @@ return function(BASE_URL, config)
 		if not universalActive then return end
 		local cam = Workspace.CurrentCamera
 		if not cam then return end
-
-		-- Rebuild vis filter every frame so respawns and joins are always current.
-		updateSharedVisFilter()
 
 		local screenSize   = cam.ViewportSize
 		local screenCenter = screenSize / 2
@@ -415,9 +416,16 @@ return function(BASE_URL, config)
 			local entryVisible = true
 			if onScr then
 				local camPos = cam.CFrame.Position
-				local ok, ray = pcall(Workspace.Raycast, Workspace, camPos, rootPos - camPos, visParams)
-				if ok and ray and ray.Instance then
-					entryVisible = ray.Instance:IsDescendantOf(pc.char)
+				local dir    = rootPos - camPos
+				local dist   = dir.Magnitude
+				if dist > 0.1 then
+					-- Shorten by 0.05 studs so the ray never overshoots into geometry
+					-- directly behind the target (same technique as MyaLoader reference).
+					local ok, ray = pcall(Workspace.Raycast, Workspace, camPos, dir.Unit * (dist - 0.05), visParams)
+					if ok and ray and ray.Instance then
+						-- Hit target's own body → visible; hit world geometry → not visible.
+						entryVisible = ray.Instance:IsDescendantOf(pc.char)
+					end
 				end
 			end
 

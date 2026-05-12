@@ -73,16 +73,6 @@ return function(ctx)
 
 	-- ── Vis-check raycast ─────────────────────────────────────────────────────────
 
-	local visParams = RaycastParams.new()
-	visParams.FilterType  = Enum.RaycastFilterType.Exclude
-	visParams.IgnoreWater = true
-
-	local function updateVisFilter()
-		local c = localPlayer.Character
-		visParams.FilterDescendantsInstances = c and { c } or {}
-	end
-	updateVisFilter()
-
 	local function getAnchor(cam)
 		local vp     = cam.ViewportSize
 		local center = Vector2.new(vp.X * 0.5, vp.Y * 0.5)
@@ -91,23 +81,18 @@ return function(ctx)
 		return UserInputService:GetMouseLocation()
 	end
 
-	local function losOk(camPos, targetPos, targetChar)
-		if not visCheck then return true end
-		local result = Workspace:Raycast(camPos, targetPos - camPos, visParams)
-		if not result then return true end
-		return result.Instance ~= nil and result.Instance:IsDescendantOf(targetChar)
-	end
-
 	local function inViewport(sp, vp)
 		return sp.X >= -50 and sp.X <= vp.X + 50
 			and sp.Y >= -50 and sp.Y <= vp.Y + 50
 	end
 
-	local function getBestTarget(cam, anchor)
+	-- Uses shared data.players (same source as ESP) so visibility check is
+	-- always in sync with what ESP shows. e.visible is the shared LOS result.
+	local function getBestTarget(cam, anchor, entries)
 		local vp = cam.ViewportSize
 
 		if keepTarget and lockedPlayer then
-			local plr = lockedPlayer
+			local plr  = lockedPlayer
 			local char = plr.Parent and plr.Character
 			local hum  = char and char:FindFirstChildWhichIsA("Humanoid")
 			if char and hum and hum.Health > 0 and not ctx.isSameTeam(plr) then
@@ -116,11 +101,15 @@ return function(ctx)
 					local sv = cam:WorldToViewportPoint(part.Position)
 					if sv.Z > 0 then
 						local sp = Vector2.new(sv.X, sv.Y)
-						if inViewport(sp, vp)
-							and (sp - anchor).Magnitude <= aimFov
-							and losOk(cam.CFrame.Position, part.Position, char)
-						then
-							return sp
+						if inViewport(sp, vp) and (sp - anchor).Magnitude <= aimFov then
+							-- Find this player's shared visibility from entries.
+							local vis = true
+							for _, e in ipairs(entries) do
+								if e.player == plr then vis = e.visible ~= false break end
+							end
+							if not visCheck or vis then
+								return sp
+							end
 						end
 					end
 				end
@@ -131,12 +120,13 @@ return function(ctx)
 		local bestDist = math.huge
 		local bestSp, bestPlr = nil, nil
 
-		for _, plr in ipairs(Players:GetPlayers()) do
-			if plr == localPlayer or ctx.isSameTeam(plr) then continue end
-			local char = plr.Character
+		for _, e in ipairs(entries) do
+			if ctx.isSameTeam(e.player) then continue end
+			if not e.onScreen then continue end
+			-- Visibility: use the shared e.visible (same raycast the ESP uses).
+			if visCheck and e.visible == false then continue end
+			local char = e.char
 			if not char then continue end
-			local hum = char:FindFirstChildWhichIsA("Humanoid")
-			if not hum or hum.Health <= 0 then continue end
 			local part = char:FindFirstChild(targetPart)
 			if not part or not part:IsA("BasePart") then continue end
 			local sv = cam:WorldToViewportPoint(part.Position)
@@ -144,10 +134,10 @@ return function(ctx)
 			local sp = Vector2.new(sv.X, sv.Y)
 			if not inViewport(sp, vp) then continue end
 			local dist = (sp - anchor).Magnitude
-			if dist < aimFov and dist < bestDist and losOk(cam.CFrame.Position, part.Position, char) then
+			if dist < aimFov and dist < bestDist then
 				bestDist = dist
 				bestSp   = sp
-				bestPlr  = plr
+				bestPlr  = e.player
 			end
 		end
 
@@ -198,7 +188,7 @@ return function(ctx)
 	section:AddToggle("aaVisCk01x", {
 		Title    = "Visibility Check",
 		Default  = false,
-		Callback = function(v) visCheck = v; updateVisFilter() end,
+		Callback = function(v) visCheck = v end,
 	})
 	section:AddToggle("aaLockTg1x", {
 		Title    = "Keep on Target",
@@ -256,7 +246,7 @@ return function(ctx)
 			return
 		end
 
-		local bestSp = getBestTarget(cam, anchor)
+		local bestSp = getBestTarget(cam, anchor, data.players)
 		if not bestSp then remX, remY = 0, 0 return end
 
 		local dx = bestSp.X - anchor.X
