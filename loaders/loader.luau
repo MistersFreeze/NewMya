@@ -1,4 +1,4 @@
-local BASE_URL = "https://raw.githubusercontent.com/MistersFreeze/MyaLoader/main/"
+local BASE_URL = "https://raw.githubusercontent.com/MistersFreeze/NewMya/main/"
 if typeof(getgenv) == "function" and typeof(getgenv().MYA_BASE_URL) == "string" and #getgenv().MYA_BASE_URL > 0 then
 	local u = getgenv().MYA_BASE_URL
 	if string.sub(u, -1) ~= "/" then

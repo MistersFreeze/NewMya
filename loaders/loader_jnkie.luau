@@ -8,7 +8,7 @@
   3) fetch and run New_Mya/loaders/loader.luau from your host
 ]]
 
-local MYA_BASE_URL = "https://raw.githubusercontent.com/MistersFreeze/MyaLoader/main/"
+local MYA_BASE_URL = "https://raw.githubusercontent.com/MistersFreeze/NewMya/main/"
 local JUNKIE_LICENSE_KEY = ""
 local LOADER_PATH = "New_Mya/loaders/loader.luau"
 
