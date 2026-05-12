@@ -119,8 +119,25 @@ return function(BASE_URL: string, config: { [string]: any })
 	InterfaceManager:SetFolder("MyaHub")
 	SaveManager:SetFolder("MyaHub/Config")
 	FloatingButtonManager:SetFolder("MyaHub/Floating")
+
+	-- Patch options file before LoadSettings so a stale "Delete" / "LeftControl"
+	-- bind can never be restored. RightShift is the only allowed default.
+	pcall(function()
+		if typeof(writefile) ~= "function" then return end
+		if typeof(makefolder) == "function" then pcall(makefolder, "MyaHub") end
+		local optPath = "MyaHub/options.json"
+		local opts = {}
+		if typeof(isfile) == "function" and isfile(optPath) and typeof(readfile) == "function" then
+			local ok, t = pcall(function() return HttpService:JSONDecode(readfile(optPath)) end)
+			if ok and typeof(t) == "table" then opts = t end
+		end
+		opts.MenuKeybind = "RightShift"
+		writefile(optPath, HttpService:JSONEncode(opts))
+	end)
+
 	InterfaceManager:LoadSettings()
 	local ifacePre = InterfaceManager.Settings
+	ifacePre.MenuKeybind = "RightShift"
 
 	local ifaceOptionsExist = typeof(isfile) == "function" and isfile("MyaHub/options.json")
 
@@ -715,6 +732,14 @@ return function(BASE_URL: string, config: { [string]: any })
 	})
 
 	InterfaceManager:BuildInterfaceSection(SettingsTab)
+	-- Force the live keybind widget to RightShift after the section is built.
+	pcall(function()
+		if Fluent.MinimizeKeybind then
+			Fluent.MinimizeKeybind:SetValue("RightShift")
+		end
+		ifacePre.MenuKeybind = "RightShift"
+		InterfaceManager:SaveSettings()
+	end)
 	SaveManager:BuildConfigSection(SettingsTab)
 	FloatingButtonManager:BuildConfigSection(SettingsTab)
 
