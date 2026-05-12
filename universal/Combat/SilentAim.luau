@@ -1,5 +1,6 @@
 return function(ctx)
 	local combatTab        = ctx.combatTab
+	local makeBind         = ctx.makeBind
 	local Players          = ctx.Players
 	local localPlayer      = ctx.localPlayer
 	local Workspace        = ctx.Workspace
@@ -126,10 +127,13 @@ return function(ctx)
 		return bestPart
 	end
 
+	-- silentBind declared forward so heartbeat can reference it.
+	local silentBind
+
 	-- ── Heartbeat: keep closestPart fresh ─────────────────────────────────────────
 
 	local heartbeatConn = RunService.Heartbeat:Connect(function()
-		if not enabled then
+		if not (silentBind and silentBind.isActive()) then
 			closestPart = nil
 			return
 		end
@@ -154,7 +158,7 @@ return function(ctx)
 				local args   = { ... }
 				local self   = args[1]
 
-				if enabled
+				if silentBind and silentBind.isActive()
 					and self == Workspace
 					and method == "Raycast"
 					and not checkcaller()
@@ -184,10 +188,10 @@ return function(ctx)
 		Content = hookInstalled and "Hook active." or "Hook unavailable on this executor.",
 	})
 
-	section:AddToggle("saEnable01x", {
-		Title    = "Enable",
-		Default  = false,
-		Callback = function(v)
+	silentBind = makeBind(section, {
+		key      = "saEnable01x",
+		title    = "Enable",
+		onEnabled = function(v)
 			enabled = v
 			if not v then closestPart = nil end
 		end,
@@ -283,6 +287,7 @@ return function(ctx)
 	local function unmount()
 		enabled     = false
 		closestPart = nil
+		if silentBind then silentBind.unmount() end
 		fovCircle.Visible = false
 		pcall(function() fovCircle:Remove() end)
 		for _, l in ipairs(fovDashLines) do pcall(function() l:Remove() end) end

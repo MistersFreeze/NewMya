@@ -191,12 +191,34 @@ return function(BASE_URL, config)
 	end
 
 	-- ── Bind widget factory ───────────────────────────────────────────────────────
-	-- Uses a plain Toggle. AddBind from FluentModded always creates its own toggle
-	-- row internally even when it fails to return a usable object, which caused a
-	-- duplicate button bug. A simple AddToggle is reliable and never duplicates.
+	-- Uses AddBind (toggle row + inline key-pill + mode-pill from FluentModded).
+	-- If AddBind returns any table the toggle row already exists → no fallback toggle.
+	-- Only falls back to plain AddToggle when AddBind errored or returned nil/non-table.
 
 	local function makeBind(section, opts)
 		local enabled = opts.default or false
+
+		local bindOk, h = pcall(function()
+			return section:AddBind(opts.key, {
+				Title     = opts.title or "Enable",
+				Default   = opts.default or false,
+				onEnabled = function(v)
+					enabled = v
+					if opts.onEnabled then opts.onEnabled(v) end
+				end,
+			})
+		end)
+
+		if bindOk and type(h) == "table" then
+			-- Row created by AddBind. isActive includes key+mode logic when available.
+			return {
+				isActive   = type(h.isActive)    == "function" and h.isActive    or function() return enabled end,
+				getEnabled = type(h.getEnabled)  == "function" and h.getEnabled  or function() return enabled end,
+				unmount    = type(h.bindUnmount) == "function" and h.bindUnmount or function() end,
+			}
+		end
+
+		-- AddBind completely failed (error or nil) — safe to add a plain toggle.
 		section:AddToggle(opts.key, {
 			Title    = opts.title or "Enable",
 			Default  = enabled,
