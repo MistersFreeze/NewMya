@@ -411,7 +411,11 @@ return function(BASE_URL, config)
 			local rootPos = root.Position
 			local rv, rin = cam:WorldToViewportPoint(rootPos)
 			local depth   = rv.Z
-			local onScr   = rin and depth > 0
+			-- Bounds-based check instead of relying on rin alone — some games with
+			-- custom cameras return rin=true for off-screen players.
+			local onScr = depth > 0
+				and rv.X >= -30 and rv.X <= screenSize.X + 30
+				and rv.Y >= -30 and rv.Y <= screenSize.Y + 30
 
 			local entryVisible = true
 			if onScr then

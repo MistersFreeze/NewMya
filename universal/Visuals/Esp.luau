@@ -7,16 +7,14 @@ return function(ctx)
 
 	-- ── State ─────────────────────────────────────────────────────────────────────
 
-	local enabled    = false
-	local style      = "Chams"  -- "Chams" | "Box" | "Corners"
-	local showName   = true
-	local showHealth = true
-	local showDist   = true
-	local fillColor  = Color3.fromRGB(255, 100, 150)
+	local enabled     = false
+	local style       = "Chams"
+	local showName    = true
+	local showHealth  = true
+	local showDist    = true
+	local fillColor   = Color3.fromRGB(255, 100, 150)
 	local visCheck    = false
 	local notVisColor = Color3.fromRGB(255, 165, 0)
-
-	-- ── GUI container (Highlights need a parent in the DataModel) ─────────────────
 
 	local guiParent = (typeof(gethui) == "function" and gethui())
 		or localPlayer:WaitForChild("PlayerGui")
@@ -27,27 +25,9 @@ return function(ctx)
 	espGui.Parent         = guiParent
 
 	-- ── Per-player pool ───────────────────────────────────────────────────────────
-	-- Each entry holds:
-	--   hl       — Highlight (Chams style)
-	--   sq       — Drawing Square (Box style)
-	--   cl[1..8] — Drawing Lines  (Corners style: 2 lines per corner)
-	--   nameTxt, distTxt, hpBg, hpFill  — shared 2D overlays
-	--   char, head, hrp                 — cached character refs
 
 	local pool  = {}
-	local conns = {}  -- per-player CharacterAdded connections
-
-	local function makeCornerLines()
-		local t = {}
-		for i = 1, 8 do
-			local l = Drawing.new("Line")
-			l.Visible   = false
-			l.Thickness = 1.5
-			l.Color     = fillColor
-			t[i] = l
-		end
-		return t
-	end
+	local conns = {}
 
 	local function makeEntry(player)
 		local char = player.Character
@@ -58,16 +38,25 @@ return function(ctx)
 		hl.Adornee             = char
 		hl.FillColor           = fillColor
 		hl.FillTransparency    = 0.5
-		hl.OutlineTransparency = 1        -- no outline
+		hl.OutlineTransparency = 1
 		hl.DepthMode           = Enum.HighlightDepthMode.AlwaysOnTop
-		hl.Enabled             = (style == "Chams")
+		hl.Enabled             = false
 		hl.Parent              = espGui
 
 		local sq = Drawing.new("Square")
-		sq.Visible    = false
-		sq.Filled     = false
-		sq.Thickness  = 1.5
-		sq.Color      = fillColor
+		sq.Visible   = false
+		sq.Filled    = false
+		sq.Thickness = 1.5
+		sq.Color     = fillColor
+
+		local cl = {}
+		for i = 1, 8 do
+			local l = Drawing.new("Line")
+			l.Visible   = false
+			l.Thickness = 1.5
+			l.Color     = fillColor
+			cl[i] = l
+		end
 
 		local nameTxt = Drawing.new("Text")
 		nameTxt.Visible      = false
@@ -100,16 +89,18 @@ return function(ctx)
 		hpFill.Transparency = 0
 
 		pool[player] = {
-			hl      = hl,
-			sq      = sq,
-			cl      = makeCornerLines(),
-			nameTxt = nameTxt,
-			distTxt = distTxt,
-			hpBg    = hpBg,
-			hpFill  = hpFill,
-			char    = char,
-			head    = char:FindFirstChild("Head"),
-			hrp     = char:FindFirstChild("HumanoidRootPart"),
+			hl       = hl,
+			sq       = sq,
+			cl       = cl,
+			nameTxt  = nameTxt,
+			distTxt  = distTxt,
+			hpBg     = hpBg,
+			hpFill   = hpFill,
+			char     = char,
+			head     = char:FindFirstChild("Head"),
+			hrp      = char:FindFirstChild("HumanoidRootPart"),
+			hidden   = true,   -- track visibility state to avoid redundant property sets
+			lastColor = nil,
 		}
 	end
 
@@ -126,7 +117,9 @@ return function(ctx)
 		pool[player] = nil
 	end
 
-	local function hideAll(e)
+	local function hideEntry(e)
+		if e.hidden then return end  -- already hidden, skip redundant sets
+		e.hidden        = true
 		e.hl.Enabled    = false
 		e.sq.Visible    = false
 		for _, l in ipairs(e.cl) do l.Visible = false end
@@ -140,15 +133,12 @@ return function(ctx)
 
 	local function attachPlayer(player)
 		if player == localPlayer then return end
-		local c1 = player.CharacterAdded:Connect(function(char)
+		local c1 = player.CharacterAdded:Connect(function()
 			task.defer(function()
 				removeEntry(player)
-				if enabled and not isSameTeam(player) then
-					makeEntry(player)
-				end
+				if enabled and not isSameTeam(player) then makeEntry(player) end
 			end)
 		end)
-		-- Remove the highlight immediately when the character is destroyed (death/respawn).
 		local c2 = player.CharacterRemoving:Connect(function()
 			removeEntry(player)
 		end)
@@ -162,11 +152,7 @@ return function(ctx)
 		removeEntry(player)
 		local cs = conns[player]
 		if cs then
-			if type(cs) == "table" then
-				for _, c in ipairs(cs) do pcall(function() c:Disconnect() end) end
-			else
-				pcall(function() cs:Disconnect() end)
-			end
+			for _, c in ipairs(cs) do pcall(function() c:Disconnect() end) end
 		end
 		conns[player] = nil
 	end
@@ -224,8 +210,8 @@ return function(ctx)
 			fillColor = c
 			for _, e in pairs(pool) do
 				pcall(function()
-					e.hl.FillColor = c
-					e.sq.Color     = c
+					e.hl.FillColor  = c
+					e.sq.Color      = c
 					e.nameTxt.Color = c
 					for _, l in ipairs(e.cl) do l.Color = c end
 				end)
@@ -246,15 +232,10 @@ return function(ctx)
 
 	-- ── Per-frame update ──────────────────────────────────────────────────────────
 
-	local function effectiveColor(entryVisible)
-		if not visCheck then return fillColor end
-		return (entryVisible ~= false) and fillColor or notVisColor
-	end
-
 	local function update(data)
 		local cam = data.cam or Workspace.CurrentCamera
 		if not enabled or not cam then
-			for _, e in pairs(pool) do hideAll(e) end
+			for _, e in pairs(pool) do hideEntry(e) end
 			return
 		end
 
@@ -269,38 +250,44 @@ return function(ctx)
 			seen[player] = true
 
 			if not entry.onScreen then
-				hideAll(e)
+				hideEntry(e)
 				continue
 			end
 
-			-- Refresh cached part refs on character change.
+			-- Refresh character refs only when char changed.
 			local char = entry.char or player.Character
 			if char ~= e.char then
-				e.char = char
-				e.head = char and char:FindFirstChild("Head")
-				e.hrp  = char and char:FindFirstChild("HumanoidRootPart")
+				e.char      = char
+				e.head      = char and char:FindFirstChild("Head")
+				e.hrp       = char and char:FindFirstChild("HumanoidRootPart")
+				e.lastColor = nil  -- force color refresh
 				pcall(function() e.hl.Adornee = char end)
 			end
 			if char and not e.head then e.head = char:FindFirstChild("Head") end
 			if char and not e.hrp  then e.hrp  = char:FindFirstChild("HumanoidRootPart") end
 
-			local curColor = effectiveColor(entry.visible)
+			local curColor = (visCheck and e.visible == false) and notVisColor or fillColor
 
-			-- Chams: enable Highlight, hide box drawings.
-			e.hl.Enabled   = (style == "Chams")
-			e.hl.FillColor = curColor
+			-- Only update Highlight properties when something changed.
+			local isChams = style == "Chams"
+			if e.hl.Enabled ~= isChams then e.hl.Enabled = isChams end
+			if isChams and curColor ~= e.lastColor then
+				e.hl.FillColor = curColor
+			end
+			e.lastColor = curColor
+			e.hidden    = false
 
-			-- Compute bounding box screen coords when any style or health bar needs them.
-			local boxOk   = false
+			-- Bounding box (skip WorldToViewportPoint for Chams — no box needed).
+			local boxOk = false
 			local topLeft, boxW, boxH
 
-			if e.head and e.hrp then
+			if style ~= "Chams" and e.head and e.hrp then
 				local topVP = cam:WorldToViewportPoint(e.head.Position + Vector3.new(0, 0.35, 0))
-				local botVP = cam:WorldToViewportPoint(e.hrp.Position  - Vector3.new(0, 2.5,  0))
+				local botVP = cam:WorldToViewportPoint(e.hrp.Position  - Vector3.new(0, 2.5, 0))
 				if topVP.Z > 0 and botVP.Z > 0 then
 					local byTop = math.min(topVP.Y, botVP.Y) - 2
 					local byBot = math.max(topVP.Y, botVP.Y)
-					local bh = byBot - byTop
+					local bh    = byBot - byTop
 					if bh > 2 then
 						boxOk   = true
 						boxH    = bh
@@ -310,40 +297,38 @@ return function(ctx)
 				end
 			end
 
-			-- Box style.
+			-- Box / Corners
 			if style == "Box" and boxOk then
 				e.sq.Position = topLeft
 				e.sq.Size     = Vector2.new(boxW, boxH)
 				e.sq.Color    = curColor
 				e.sq.Visible  = true
-				for _, l in ipairs(e.cl) do l.Visible = false end
-			-- Corners style.
+				if #e.cl > 0 and e.cl[1].Visible then
+					for _, l in ipairs(e.cl) do l.Visible = false end
+				end
 			elseif style == "Corners" and boxOk then
-				e.sq.Visible = false
+				if e.sq.Visible then e.sq.Visible = false end
 				local x1, y1 = topLeft.X, topLeft.Y
 				local x2, y2 = topLeft.X + boxW, topLeft.Y + boxH
-				local cw     = boxW * 0.25
-				local ch     = boxH * 0.25
+				local cw, ch = boxW * 0.25, boxH * 0.25
 				local cl     = e.cl
-				-- Top-left
-				cl[1].From = Vector2.new(x1, y1); cl[1].To = Vector2.new(x1 + cw, y1)
-				cl[2].From = Vector2.new(x1, y1); cl[2].To = Vector2.new(x1, y1 + ch)
-				-- Top-right
-				cl[3].From = Vector2.new(x2, y1); cl[3].To = Vector2.new(x2 - cw, y1)
-				cl[4].From = Vector2.new(x2, y1); cl[4].To = Vector2.new(x2, y1 + ch)
-				-- Bottom-left
-				cl[5].From = Vector2.new(x1, y2); cl[5].To = Vector2.new(x1 + cw, y2)
-				cl[6].From = Vector2.new(x1, y2); cl[6].To = Vector2.new(x1, y2 - ch)
-				-- Bottom-right
-				cl[7].From = Vector2.new(x2, y2); cl[7].To = Vector2.new(x2 - cw, y2)
-				cl[8].From = Vector2.new(x2, y2); cl[8].To = Vector2.new(x2, y2 - ch)
+				cl[1].From = Vector2.new(x1, y1); cl[1].To = Vector2.new(x1+cw, y1)
+				cl[2].From = Vector2.new(x1, y1); cl[2].To = Vector2.new(x1, y1+ch)
+				cl[3].From = Vector2.new(x2, y1); cl[3].To = Vector2.new(x2-cw, y1)
+				cl[4].From = Vector2.new(x2, y1); cl[4].To = Vector2.new(x2, y1+ch)
+				cl[5].From = Vector2.new(x1, y2); cl[5].To = Vector2.new(x1+cw, y2)
+				cl[6].From = Vector2.new(x1, y2); cl[6].To = Vector2.new(x1, y2-ch)
+				cl[7].From = Vector2.new(x2, y2); cl[7].To = Vector2.new(x2-cw, y2)
+				cl[8].From = Vector2.new(x2, y2); cl[8].To = Vector2.new(x2, y2-ch)
 				for i = 1, 8 do cl[i].Color = curColor; cl[i].Visible = true end
 			else
-				e.sq.Visible = false
-				for _, l in ipairs(e.cl) do l.Visible = false end
+				if e.sq.Visible then e.sq.Visible = false end
+				for _, l in ipairs(e.cl) do
+					if l.Visible then l.Visible = false end
+				end
 			end
 
-			-- Health bar (vertical line pair, right of box).
+			-- Health bar
 			if showHealth and boxOk then
 				local bx  = topLeft.X + boxW + 4
 				local byT = topLeft.Y + 2
@@ -354,30 +339,32 @@ return function(ctx)
 				e.hpBg.Visible = true
 				e.hpFill.From    = Vector2.new(bx, byB - boxH * pct)
 				e.hpFill.To      = Vector2.new(bx, byB)
-				e.hpFill.Color   = Color3.fromRGB(math.floor(255*(1-pct)), math.floor(255*pct), 0)
+				e.hpFill.Color   = Color3.fromRGB(
+					math.floor(255 * (1 - pct)),
+					math.floor(255 * pct), 0)
 				e.hpFill.Visible = true
 			else
-				e.hpBg.Visible   = false
-				e.hpFill.Visible = false
+				if e.hpBg.Visible   then e.hpBg.Visible   = false end
+				if e.hpFill.Visible then e.hpFill.Visible = false end
 			end
 
-			-- Name label (above head).
+			-- Name label
 			if showName and e.head then
 				local hv = cam:WorldToViewportPoint(e.head.Position + Vector3.new(0, 2.45, 0))
 				if hv.Z > 0 then
 					local disp = player.DisplayName
-					e.nameTxt.Text     = (typeof(disp) == "string" and disp ~= "") and disp or player.Name
+					e.nameTxt.Text     = (typeof(disp)=="string" and disp~="") and disp or player.Name
 					e.nameTxt.Position = Vector2.new(hv.X, hv.Y)
 					e.nameTxt.Color    = curColor
 					e.nameTxt.Visible  = true
 				else
-					e.nameTxt.Visible = false
+					if e.nameTxt.Visible then e.nameTxt.Visible = false end
 				end
 			else
-				e.nameTxt.Visible = false
+				if e.nameTxt.Visible then e.nameTxt.Visible = false end
 			end
 
-			-- Distance label (below feet).
+			-- Distance label
 			if showDist then
 				local fv = cam:WorldToViewportPoint(entry.rootPos - Vector3.new(0, 3.2, 0))
 				if fv.Z > 0 then
@@ -385,16 +372,15 @@ return function(ctx)
 					e.distTxt.Position = Vector2.new(fv.X, fv.Y)
 					e.distTxt.Visible  = true
 				else
-					e.distTxt.Visible = false
+					if e.distTxt.Visible then e.distTxt.Visible = false end
 				end
 			else
-				e.distTxt.Visible = false
+				if e.distTxt.Visible then e.distTxt.Visible = false end
 			end
 		end
 
-		-- Hide overlays for players not in this frame.
 		for player, e in pairs(pool) do
-			if not seen[player] then hideAll(e) end
+			if not seen[player] then hideEntry(e) end
 		end
 	end
 

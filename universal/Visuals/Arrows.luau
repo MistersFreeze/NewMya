@@ -186,13 +186,21 @@ return function(ctx)
 		local cam = data.cam or Workspace.CurrentCamera
 		if not cam then hideAll() return end
 
-		local camCF  = cam.CFrame
-		local center = data.screenCenter
+		local camCF    = cam.CFrame
+		local center   = data.screenCenter
+		local scrSize  = data.screenSize
 
 		local off = {}
 		for _, e in ipairs(data.players) do
 			if isSameTeam(e.player) then continue end
-			if e.onScreen then continue end
+			-- Robust off-screen check: use depth + bounds rather than onScreen alone.
+			-- Some games return onScreen=true even for players outside the viewport.
+			local depth = e.depth or 0
+			local sp    = e.rootSp
+			local trulyOffScreen = depth <= 0
+				or sp.X < -20 or sp.X > scrSize.X + 20
+				or sp.Y < -20 or sp.Y > scrSize.Y + 20
+			if not trulyOffScreen then continue end
 			off[#off + 1] = e
 		end
 		table.sort(off, function(a, b) return a.dist < b.dist end)
