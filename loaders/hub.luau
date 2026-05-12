@@ -73,7 +73,15 @@ return function(BASE_URL: string, config: { [string]: any })
 		if typeof(cached) == "table" and cached.CreateWindow then
 			return cached
 		end
-		local src = select(1, fetchPath("New_Mya/lib/FluentModded.lua"))
+		local src = nil
+		local genv = typeof(getgenv) == "function" and getgenv()
+		local pre = genv and genv.MYA_PREFETCH_FLUENT_SRC
+		if typeof(pre) == "string" and #pre > 500 then
+			src = pre
+			genv.MYA_PREFETCH_FLUENT_SRC = nil
+		else
+			src = select(1, fetchPath("New_Mya/lib/FluentModded.lua"))
+		end
 		if typeof(src) ~= "string" or #src < 500 then
 			local okSrc, remote = pcall(function()
 				return game:HttpGet(FLUENT_URL, true)
@@ -105,44 +113,19 @@ return function(BASE_URL: string, config: { [string]: any })
 	local InterfaceManager = Fluent.InterfaceManager
 	local FloatingButtonManager = Fluent.FloatingButtonManager
 
-	local windowOpts = {
-		Title = tostring(config.BRAND or "Mya Universal"),
-		SubTitle = "",
-		TabWidth = 160,
-		Size = UDim2.fromOffset(540, 500),
-		Acrylic = false,
-		Theme = "Blood Red",
-		MinimizeKey = Enum.KeyCode.RightShift,
-		UserInfoTop = true,
-		UserInfoTitle = playerName,
-		UserInfoSubtitle = "Mya User",
-		UserInfoColor = Color3.fromRGB(180, 10, 20),
-		Search = true,
-	}
+	SaveManager:SetLibrary(Fluent)
+	InterfaceManager:SetLibrary(Fluent)
+	FloatingButtonManager:SetLibrary(Fluent)
+	InterfaceManager:SetFolder("MyaHub")
+	SaveManager:SetFolder("MyaHub/Config")
+	FloatingButtonManager:SetFolder("MyaHub/Floating")
+	InterfaceManager:LoadSettings()
+	local ifacePre = InterfaceManager.Settings
 
-	local function recreateFluentAndManagers()
-		_G.MYA_FLUENT_SINGLETON = nil
-		local fresh = getFluentSingleton()
-		Fluent = fresh
-		SaveManager = fresh.SaveManager
-		InterfaceManager = fresh.InterfaceManager
-		FloatingButtonManager = fresh.FloatingButtonManager
-	end
+	local ifaceOptionsExist = typeof(isfile) == "function" and isfile("MyaHub/options.json")
 
-	local Window = Fluent:CreateWindow(windowOpts)
-	if not Window or typeof(Window.AddTab) ~= "function" then
-		warn("[Mya Loader] Fluent CreateWindow failed; resetting library and retrying once.")
-		recreateFluentAndManagers()
-		Window = Fluent:CreateWindow(windowOpts)
-	end
-	if not Window or typeof(Window.AddTab) ~= "function" then
-		error("Mya Loader: Fluent could not create the hub window (still nil after reset).")
-	end
-
-	local discordTag = "@fubelt"
 	local layoutFile = "MyaHub/layout.json"
-
-	local function readLayout(): { [string]: number }?
+	local function readLayoutEarly(): any
 		if typeof(readfile) ~= "function" then
 			return nil
 		end
@@ -157,6 +140,102 @@ return function(BASE_URL: string, config: { [string]: any })
 			return nil
 		end
 		return parsed
+	end
+
+	local savedLayoutPre = readLayoutEarly()
+
+	local function pickFluentTheme(name)
+		if typeof(name) == "string" and table.find(Fluent.Themes, name) then
+			return name
+		end
+		return "Blood Red"
+	end
+
+	local windowOpts = {
+		Title = tostring(config.BRAND or "Mya Universal"),
+		SubTitle = "",
+		TabWidth = 160,
+		Size = UDim2.fromOffset(540, 500),
+		Acrylic = ifaceOptionsExist and ifacePre.Acrylic == true or false,
+		Theme = pickFluentTheme(ifacePre.Theme),
+		MinimizeKey = Enum.KeyCode.RightShift,
+		UserInfoTop = true,
+		UserInfoTitle = playerName,
+		UserInfoSubtitle = "Mya User",
+		UserInfoColor = Color3.fromRGB(180, 10, 20),
+		Search = false,
+	}
+	do
+		local sx = savedLayoutPre and tonumber(savedLayoutPre.sx)
+		local sy = savedLayoutPre and tonumber(savedLayoutPre.sy)
+		if sx and sy and sx >= 420 and sy >= 320 then
+			windowOpts.Size = UDim2.fromOffset(math.floor(sx), math.floor(sy))
+		end
+	end
+
+	local function hideFluentGui(hidden)
+		local rootGui = Fluent and Fluent.GUI
+		if typeof(rootGui) ~= "Instance" then
+			return
+		end
+		pcall(function()
+			rootGui.Enabled = not hidden
+		end)
+	end
+
+	hideFluentGui(true)
+
+	local function recreateFluentAndManagers()
+		_G.MYA_FLUENT_SINGLETON = nil
+		local fresh = getFluentSingleton()
+		Fluent = fresh
+		SaveManager = fresh.SaveManager
+		InterfaceManager = fresh.InterfaceManager
+		FloatingButtonManager = fresh.FloatingButtonManager
+		SaveManager:SetLibrary(Fluent)
+		InterfaceManager:SetLibrary(Fluent)
+		FloatingButtonManager:SetLibrary(Fluent)
+		InterfaceManager:SetFolder("MyaHub")
+		SaveManager:SetFolder("MyaHub/Config")
+		FloatingButtonManager:SetFolder("MyaHub/Floating")
+		InterfaceManager:LoadSettings()
+		ifacePre = InterfaceManager.Settings
+		ifaceOptionsExist = typeof(isfile) == "function" and isfile("MyaHub/options.json")
+	end
+
+	local Window = Fluent:CreateWindow(windowOpts)
+	if not Window or typeof(Window.AddTab) ~= "function" then
+		warn("[Mya Loader] Fluent CreateWindow failed; resetting library and retrying once.")
+		recreateFluentAndManagers()
+		ifacePre = InterfaceManager.Settings
+		ifaceOptionsExist = typeof(isfile) == "function" and isfile("MyaHub/options.json")
+		windowOpts.Theme = pickFluentTheme(ifacePre.Theme)
+		windowOpts.Acrylic = ifaceOptionsExist and ifacePre.Acrylic == true or false
+		do
+			local sx = savedLayoutPre and tonumber(savedLayoutPre.sx)
+			local sy = savedLayoutPre and tonumber(savedLayoutPre.sy)
+			if sx and sy and sx >= 420 and sy >= 320 then
+				windowOpts.Size = UDim2.fromOffset(math.floor(sx), math.floor(sy))
+			end
+		end
+		hideFluentGui(true)
+		Window = Fluent:CreateWindow(windowOpts)
+	end
+	if not Window or typeof(Window.AddTab) ~= "function" then
+		error("Mya Loader: Fluent could not create the hub window (still nil after reset).")
+	end
+
+	pcall(function()
+		getgenv().ShineEnabled = ifacePre.Animated ~= false
+		Fluent:SetTheme(pickFluentTheme(ifacePre.Theme))
+	end)
+	pcall(function()
+		Fluent:ToggleTransparency(ifacePre.Transparency ~= false)
+	end)
+	local discordTag = "@fubelt"
+
+	local function readLayout(): { [string]: number }?
+		return readLayoutEarly()
 	end
 
 	local function writeLayout(layout: { [string]: number })
@@ -200,12 +279,12 @@ return function(BASE_URL: string, config: { [string]: any })
 	end
 
 	local brandTitle = tostring(config.BRAND or "Mya Universal")
-	local savedLayout = readLayout()
+	local savedLayout = savedLayoutPre
 	local latestLayout = savedLayout
 	local rootFrameRef: Frame? = nil
 
 	local function applyLayoutToRoot(force: boolean?)
-		local rootFrame = rootFrameRef or findWindowFrame(brandTitle)
+		local rootFrame = rootFrameRef or Window.Root or findWindowFrame(brandTitle)
 		if not rootFrame then
 			return
 		end
@@ -237,39 +316,40 @@ return function(BASE_URL: string, config: { [string]: any })
 		end
 	end
 
-	task.delay(0.2, function()
-		local rootFrame = findWindowFrame(brandTitle)
+	do
+		local rootFrame = Window and Window.Root
 		if not rootFrame then
-			return
+			rootFrame = findWindowFrame(brandTitle)
 		end
-		rootFrameRef = rootFrame
-
-		if savedLayout then
-			local sx = tonumber(savedLayout.sx) or rootFrame.Size.X.Offset
-			local sy = tonumber(savedLayout.sy) or rootFrame.Size.Y.Offset
-			local pxs = tonumber(savedLayout.pxs)
-			local pxo = tonumber(savedLayout.pxo)
-			local pys = tonumber(savedLayout.pys)
-			local pyo = tonumber(savedLayout.pyo)
-			rootFrame.Size = UDim2.fromOffset(math.floor(sx), math.floor(sy))
-			if pxs and pxo and pys and pyo then
-				rootFrame.Position = UDim2.new(pxs, math.floor(pxo), pys, math.floor(pyo))
+		if rootFrame then
+			rootFrameRef = rootFrame
+			if savedLayout then
+				local sx = tonumber(savedLayout.sx) or rootFrame.Size.X.Offset
+				local sy = tonumber(savedLayout.sy) or rootFrame.Size.Y.Offset
+				local pxs = tonumber(savedLayout.pxs)
+				local pxo = tonumber(savedLayout.pxo)
+				local pys = tonumber(savedLayout.pys)
+				local pyo = tonumber(savedLayout.pyo)
+				if sx and sy and sx >= 420 and sy >= 320 then
+					rootFrame.Size = UDim2.fromOffset(math.floor(sx), math.floor(sy))
+					pcall(function()
+						if Window then
+							Window.Size = UDim2.fromOffset(math.floor(sx), math.floor(sy))
+						end
+					end)
+				end
+				if pxs and pxo and pys and pyo then
+					local pos = UDim2.new(pxs, math.floor(pxo), pys, math.floor(pyo))
+					rootFrame.Position = pos
+					pcall(function()
+						if Window then
+							Window.Position = pos
+						end
+					end)
+				end
 			end
-		end
 
-		local last = {
-			sx = rootFrame.Size.X.Offset,
-			sy = rootFrame.Size.Y.Offset,
-			pxs = rootFrame.Position.X.Scale,
-			pxo = rootFrame.Position.X.Offset,
-			pys = rootFrame.Position.Y.Scale,
-			pyo = rootFrame.Position.Y.Offset,
-		}
-		local function maybeSave()
-			if rootFrame.Size.X.Offset < 420 or rootFrame.Size.Y.Offset < 320 then
-				return
-			end
-			local now = {
+			local last = {
 				sx = rootFrame.Size.X.Offset,
 				sy = rootFrame.Size.Y.Offset,
 				pxs = rootFrame.Position.X.Scale,
@@ -277,35 +357,43 @@ return function(BASE_URL: string, config: { [string]: any })
 				pys = rootFrame.Position.Y.Scale,
 				pyo = rootFrame.Position.Y.Offset,
 			}
-			if
-				now.sx ~= last.sx
-				or now.sy ~= last.sy
-				or now.pxs ~= last.pxs
-				or now.pxo ~= last.pxo
-				or now.pys ~= last.pys
-				or now.pyo ~= last.pyo
-			then
-				last = now
-				latestLayout = now
-				writeLayout(now)
+			local function maybeSave()
+				if rootFrame.Size.X.Offset < 420 or rootFrame.Size.Y.Offset < 320 then
+					return
+				end
+				local now = {
+					sx = rootFrame.Size.X.Offset,
+					sy = rootFrame.Size.Y.Offset,
+					pxs = rootFrame.Position.X.Scale,
+					pxo = rootFrame.Position.X.Offset,
+					pys = rootFrame.Position.Y.Scale,
+					pyo = rootFrame.Position.Y.Offset,
+				}
+				if
+					now.sx ~= last.sx
+					or now.sy ~= last.sy
+					or now.pxs ~= last.pxs
+					or now.pxo ~= last.pxo
+					or now.pys ~= last.pys
+					or now.pyo ~= last.pyo
+				then
+					last = now
+					latestLayout = now
+					writeLayout(now)
+				end
 			end
+
+			rootFrame:GetPropertyChangedSignal("Size"):Connect(maybeSave)
+			rootFrame:GetPropertyChangedSignal("Position"):Connect(maybeSave)
 		end
 
-		rootFrame:GetPropertyChangedSignal("Size"):Connect(maybeSave)
-		rootFrame:GetPropertyChangedSignal("Position"):Connect(maybeSave)
-	end)
-	task.spawn(function()
-		for _ = 1, 36 do
-			applyLayoutToRoot(true)
-			task.wait(0.05)
-		end
-	end)
+	end
 
 	local MainTab = Window:AddTab({ Title = "Main", Icon = "solar/home-bold" })
 	local GamesTab = Window:AddTab({ Title = "Games", Icon = "solar/gamepad-bold" })
 	local ScriptsTab = Window:AddTab({ Title = "Scripts", Icon = "solar/code-bold" })
 	local CreditsTab = Window:AddTab({ Title = "Credits", Icon = "solar/star-bold" })
-	local SettingsTab = Window:AddTab({ Title = "Settings", Icon = "gravity/archive" })
+	local SettingsTab = Window:AddTab({ Title = "Settings", Icon = "solar/settings-bold" })
 
 	local mainSection = MainTab:AddSection("Main Controls")
 	mainSection:AddParagraph({
@@ -324,6 +412,25 @@ return function(BASE_URL: string, config: { [string]: any })
 		Content = "Found " .. tostring(gameCount) .. " mapped place IDs.",
 	})
 
+	local OpenGui
+	local function teardownForSecondaryUI()
+		pcall(function()
+			if Window and Window.Destroy then
+				Window:Destroy()
+			end
+		end)
+		pcall(function()
+			if OpenGui and OpenGui.Parent then
+				OpenGui:Destroy()
+			end
+		end)
+		for _ = 1, 2 do
+			RunService.Heartbeat:Wait()
+		end
+		_G.MYA_FLUENT_SINGLETON = nil
+		RunService.Heartbeat:Wait()
+	end
+
 	local function launchGameModule(): (boolean, string?)
 		local modulePath = supportedGames[game.PlaceId]
 		if typeof(modulePath) ~= "string" or #modulePath == 0 then
@@ -338,27 +445,8 @@ return function(BASE_URL: string, config: { [string]: any })
 			return false, "compile:" .. tostring(compileErr)
 		end
 
-		-- Fluent Modded allows only one main window; hub must be torn down *before* the game script calls CreateWindow
-		-- (otherwise CreateWindow returns nil → "attempt to index nil with 'AddTab'" in game init).
-		pcall(function()
-			if Window and Window.Destroy then
-				Window:Destroy()
-			end
-		end)
-		pcall(function()
-			if OpenGui and OpenGui.Parent then
-				OpenGui:Destroy()
-			end
-		end)
-		for _ = 1, 3 do
-			RunService.Heartbeat:Wait()
-		end
-
-		-- Hub used Fluent's single-window lock; after Destroy the library can still block CreateWindow.
-		_G.MYA_FLUENT_SINGLETON = nil
-		for _ = 1, 2 do
-			RunService.Heartbeat:Wait()
-		end
+		-- Fluent allows one active window; tear hub down first before launching another UI.
+		teardownForSecondaryUI()
 
 		local ok, runResult = pcall(chunk)
 		if not ok then
@@ -413,7 +501,15 @@ return function(BASE_URL: string, config: { [string]: any })
 
 	local scriptsSection = ScriptsTab:AddSection("Universal Scripts")
 	local function launchMyaUniversalFallback()
-		local uWindow = Fluent:CreateWindow({
+		teardownForSecondaryUI()
+		local fLib = getFluentSingleton()
+		if typeof(fLib) ~= "table" or typeof(fLib.CreateWindow) ~= "function" then
+			warn("[Mya Universal] Fallback failed: Fluent library unavailable.")
+			return
+		end
+		local fSave = fLib.SaveManager
+		local fInterface = fLib.InterfaceManager
+		local uWindow = fLib:CreateWindow({
 			Title = "Mya Universal",
 			SubTitle = "",
 			TabWidth = 160,
@@ -425,13 +521,17 @@ return function(BASE_URL: string, config: { [string]: any })
 			UserInfoTitle = playerName,
 			UserInfoSubtitle = "Mya User",
 			UserInfoColor = Color3.fromRGB(180, 10, 20),
-			Search = true,
+			Search = false,
 		})
+		if not uWindow or typeof(uWindow.AddTab) ~= "function" then
+			warn("[Mya Universal] Fallback failed: CreateWindow returned nil.")
+			return
+		end
 
 		local visualsTab = uWindow:AddTab({ Title = "Visuals", Icon = "solar/eye-bold" })
 		local combatTab = uWindow:AddTab({ Title = "Combat", Icon = "solar/target-bold" })
 		local miscTab = uWindow:AddTab({ Title = "Misc", Icon = "solar/widget-bold" })
-		local settingsTab = uWindow:AddTab({ Title = "Settings", Icon = "gravity/archive" })
+		local settingsTab = uWindow:AddTab({ Title = "Settings", Icon = "solar/settings-bold" })
 
 		local visuals = visualsTab:AddSection("Visuals")
 		visuals:AddToggle("UniversalESP", {
@@ -439,7 +539,7 @@ return function(BASE_URL: string, config: { [string]: any })
 			Icon = "solar/eye-bold",
 			Default = false,
 			Callback = function(v)
-				notify(Fluent, "Visuals", "ESP " .. (v and "enabled" or "disabled"), 2)
+				notify(fLib, "Visuals", "ESP " .. (v and "enabled" or "disabled"), 2)
 			end,
 		})
 		visuals:AddToggle("UniversalTracers", {
@@ -447,7 +547,7 @@ return function(BASE_URL: string, config: { [string]: any })
 			Icon = "solar/share-bold",
 			Default = false,
 			Callback = function(v)
-				notify(Fluent, "Visuals", "Tracers " .. (v and "enabled" or "disabled"), 2)
+				notify(fLib, "Visuals", "Tracers " .. (v and "enabled" or "disabled"), 2)
 			end,
 		})
 
@@ -457,7 +557,7 @@ return function(BASE_URL: string, config: { [string]: any })
 			Icon = "solar/target-bold",
 			Default = false,
 			Callback = function(v)
-				notify(Fluent, "Combat", "Silent Aim " .. (v and "enabled" or "disabled"), 2)
+				notify(fLib, "Combat", "Silent Aim " .. (v and "enabled" or "disabled"), 2)
 			end,
 		})
 		combat:AddToggle("UniversalAimAssist", {
@@ -465,7 +565,7 @@ return function(BASE_URL: string, config: { [string]: any })
 			Icon = "solar/crosshair-bold",
 			Default = false,
 			Callback = function(v)
-				notify(Fluent, "Combat", "Aim Assist " .. (v and "enabled" or "disabled"), 2)
+				notify(fLib, "Combat", "Aim Assist " .. (v and "enabled" or "disabled"), 2)
 			end,
 		})
 
@@ -476,31 +576,41 @@ return function(BASE_URL: string, config: { [string]: any })
 			Callback = function()
 				local src, err = fetchPath("universal/dumper.lua")
 				if not src then
-					notify(Fluent, "Misc", "Dumper fetch failed: " .. tostring(err), 4)
+					notify(fLib, "Misc", "Dumper fetch failed: " .. tostring(err), 4)
 					return
 				end
 				local chunk, compileErr = loadstring(src, "@Mya/universal/dumper.lua")
 				if typeof(chunk) ~= "function" then
-					notify(Fluent, "Misc", "Dumper compile failed: " .. tostring(compileErr), 4)
+					notify(fLib, "Misc", "Dumper compile failed: " .. tostring(compileErr), 4)
 				return
 			end
 				local ok, runErr = pcall(chunk)
 				if not ok then
-					notify(Fluent, "Misc", "Dumper runtime failed: " .. tostring(runErr), 4)
+					notify(fLib, "Misc", "Dumper runtime failed: " .. tostring(runErr), 4)
 					return
 				end
-				notify(Fluent, "Misc", "Dumper launched", 3)
+				notify(fLib, "Misc", "Dumper launched", 3)
 			end,
 		})
 
 				pcall(function()
-			InterfaceManager:BuildInterfaceSection(settingsTab)
+			if fInterface then
+				fInterface:SetLibrary(fLib)
+				fInterface:SetFolder("MyaUniversalFallback")
+				fInterface:BuildInterfaceSection(settingsTab)
+			end
 		end)
 		pcall(function()
-			SaveManager:BuildConfigSection(settingsTab)
+			if fSave then
+				fSave:SetLibrary(fLib)
+				fSave:SetFolder("MyaUniversalFallback/Config")
+				fSave:BuildConfigSection(settingsTab)
+			end
 		end)
 		pcall(function()
-			SaveManager:LoadAutoloadConfig()
+			if fSave then
+				fSave:LoadAutoloadConfig()
+			end
 		end)
 		uWindow:SelectTab(1)
 	end
@@ -528,12 +638,13 @@ return function(BASE_URL: string, config: { [string]: any })
 				return
 			end
 			if typeof(entryOrErr) == "function" then
+				teardownForSecondaryUI()
 				local rok, rerr = pcall(entryOrErr, BASE_URL, config)
 				if not rok then
 					notify(Fluent, "Mya Universal", "Runtime failed, launching fallback.", 3)
 					launchMyaUniversalFallback()
-				return
-			end
+					return
+				end
 				notify(Fluent, "Mya Universal", "Launched", 3)
 				return
 			end
@@ -603,14 +714,6 @@ return function(BASE_URL: string, config: { [string]: any })
 		Content = "Fluent Modded UI by StyearX and EvilFish",
 	})
 
-	SaveManager:SetLibrary(Fluent)
-	InterfaceManager:SetLibrary(Fluent)
-	FloatingButtonManager:SetLibrary(Fluent)
-
-	InterfaceManager:SetFolder("MyaHub")
-	SaveManager:SetFolder("MyaHub/Config")
-	FloatingButtonManager:SetFolder("MyaHub/Floating")
-
 	InterfaceManager:BuildInterfaceSection(SettingsTab)
 	SaveManager:BuildConfigSection(SettingsTab)
 	FloatingButtonManager:BuildConfigSection(SettingsTab)
@@ -624,11 +727,6 @@ return function(BASE_URL: string, config: { [string]: any })
 			FloatingButtonManager:LoadAutoloadConfig()
 		end)
 	end)
-
-	local OpenGui = Instance.new("ScreenGui")
-	OpenGui.Name = "MyaOpenUI"
-	OpenGui.ResetOnSpawn = false
-	OpenGui.Parent = CoreGui
 
 	local autoLoadDone = false
 	local unloadingNow = false
@@ -644,7 +742,7 @@ return function(BASE_URL: string, config: { [string]: any })
 		if typeof(modulePath) ~= "string" or #modulePath == 0 then
 			return
 		end
-		task.wait(0.4)
+		task.wait(0.2)
 		if autoLoadDone then
 			return
 		end
@@ -657,57 +755,15 @@ return function(BASE_URL: string, config: { [string]: any })
 				end
 			end)
 
-	local OpenBtn = Instance.new("ImageButton")
-	OpenBtn.Size = UDim2.fromOffset(55, 55)
-	OpenBtn.Position = UDim2.new(0.02, 0, 0.85, 0)
-	OpenBtn.BackgroundColor3 = Color3.fromRGB(105, 105, 105)
-	OpenBtn.BackgroundTransparency = 0
-	OpenBtn.Image = ""
-	OpenBtn.Parent = OpenGui
-	Instance.new("UICorner", OpenBtn).CornerRadius = UDim.new(0.2, 0)
-
-	FloatingButtonManager:AddButton("OpenBtn", OpenBtn, false, false)
-
-	local dragActive = false
-	local dragStart = nil
-	local startPos = nil
-
-	OpenBtn.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			dragActive = true
-			dragStart = input.Position
-			startPos = OpenBtn.Position
-			end
+	task.spawn(function()
+		pcall(function()
+			InterfaceManager:ApplyFont(ifacePre.Font or "GothamSSm")
 		end)
-
-	OpenBtn.InputChanged:Connect(function(input)
-		if dragActive and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-			local delta = input.Position - dragStart
-			OpenBtn.Position = UDim2.new(
-				startPos.X.Scale,
-				startPos.X.Offset + delta.X,
-				startPos.Y.Scale,
-				startPos.Y.Offset + delta.Y
-			)
+		for _ = 1, 4 do
+			applyLayoutToRoot(true)
+			RunService.Heartbeat:Wait()
 		end
-	end)
-
-	UserInputService.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			dragActive = false
-			end
-		end)
-
-	OpenBtn.MouseButton1Click:Connect(function()
-		if Window and Window.Minimize then
-			Window:Minimize()
-			task.spawn(function()
-				for _ = 1, 20 do
-					applyLayoutToRoot(true)
-					task.wait(0.05)
-				end
-		end)
-	end
+		hideFluentGui(false)
 	end)
 
 	_G.unload_new_mya = function()

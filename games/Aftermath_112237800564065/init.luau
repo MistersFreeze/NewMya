@@ -7,13 +7,13 @@ local CoreGui = game:GetService("CoreGui")
 
 local localPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
 
-local AFTERMATH_FOLDER_NAME = "MyaAftermath112_TracerParts"
+local AFTERMATH_FOLDER_NAME = "xKr4vNpQz7"
 local KNOWN_MYA_INSTANCE_NAMES = {
-	MyaEspBillboard = true,
-	MyaTracerTarget = true,
-	MyaTracerBeam = true,
-	MyaTracerOrigin = true,
-	MyaEspHighlight = true,
+	bFx9mTjWq2 = true,
+	nHd6pLsRc1 = true,
+	wYt3gKvBm8 = true,
+	qJe5uAzNk0 = true,
+	cVb7rXoDs4 = true,
 }
 
 local function notify(Fluent, title, content, duration)
@@ -58,15 +58,15 @@ local function getFluentSingleton()
 		end
 	end
 	if typeof(src) ~= "string" or #src == 0 then
-		error("[Aftermath] Fluent source missing (set MYA_BASE_URL + host FluentModded.lua, or use GitHub).")
+		error("UI library source unavailable.")
 	end
 	local loaderFn = loadstring(src, "@FluentModded")
 	if typeof(loaderFn) ~= "function" then
-		error("[Aftermath] Fluent compile failed")
+		error("UI library compile failed.")
 	end
 	local lib = loaderFn()
 	if typeof(lib) ~= "table" or not lib.CreateWindow then
-		error("[Aftermath] Fluent invalid")
+		error("UI library invalid.")
 	end
 	g.MYA_FLUENT_SINGLETON = lib
 	return lib
@@ -77,6 +77,30 @@ local SaveManager = Fluent.SaveManager
 local InterfaceManager = Fluent.InterfaceManager
 
 local playerName = localPlayer and localPlayer.DisplayName or "User"
+SaveManager:SetLibrary(Fluent)
+InterfaceManager:SetLibrary(Fluent)
+InterfaceManager:SetFolder("gVs5nTwQr2")
+SaveManager:SetFolder("gVs5nTwQr2/Config")
+InterfaceManager:LoadSettings()
+local ifacePre = InterfaceManager.Settings
+
+local function pickFluentTheme(name)
+	if typeof(name) == "string" and table.find(Fluent.Themes, name) then
+		return name
+	end
+	return "Blood Red"
+end
+
+local function hideFluentGui(hidden)
+	local rootGui = Fluent and Fluent.GUI
+	if typeof(rootGui) ~= "Instance" then
+		return
+	end
+	pcall(function()
+		rootGui.Enabled = not hidden
+	end)
+end
+hideFluentGui(true)
 local customPlayerList = nil
 do
 	local ok, mod = pcall(function()
@@ -101,22 +125,20 @@ local Window = Fluent:CreateWindow({
 	TabWidth = 160,
 	Size = UDim2.fromOffset(520, 470),
 	Acrylic = false,
-	Theme = "Blood Red",
+	Theme = pickFluentTheme(ifacePre.Theme),
 	MinimizeKey = Enum.KeyCode.RightShift,
 	UserInfoTop = true,
 	UserInfoTitle = playerName,
 	UserInfoSubtitle = "Mya User",
 	UserInfoColor = Color3.fromRGB(180, 10, 20),
-	Search = true,
+	Search = false,
 })
 if not Window or typeof(Window.AddTab) ~= "function" then
-	error(
-		"[Aftermath] Fluent CreateWindow failed (nil). Close any other Mya Fluent window first, then load this module again."
-	)
+	error("Window creation failed. Close any existing window first, then reload.")
 end
 
 local visualsTab = Window:AddTab({ Title = "Visuals", Icon = "solar/eye-bold" })
-local settingsTab = Window:AddTab({ Title = "Settings", Icon = "gravity/archive" })
+local settingsTab = Window:AddTab({ Title = "Settings", Icon = "solar/settings-bold" })
 
 local visualSection = visualsTab:AddSection("ESP")
 
@@ -153,7 +175,7 @@ local zombieCacheAt = 0
 
 local function makeBoxGui(targetPart, targetName)
 	local billboard = Instance.new("BillboardGui")
-	billboard.Name = "MyaEspBillboard"
+	billboard.Name = "bFx9mTjWq2"
 	billboard.Adornee = targetPart
 	billboard.Size = UDim2.new(0, 200, 0, 80)
 	billboard.StudsOffset = Vector3.new(0, 2.2, 0)
@@ -162,7 +184,7 @@ local function makeBoxGui(targetPart, targetName)
 	billboard.Parent = targetPart.Parent or targetPart
 
 	local nameLabel = Instance.new("TextLabel")
-	nameLabel.Name = "NameLabel"
+	nameLabel.Name = "rQn1sWkLb5"
 	nameLabel.Size = UDim2.new(1, 0, 0, 18)
 	nameLabel.Position = UDim2.new(0, 0, 0, 0)
 	nameLabel.BackgroundTransparency = 1
@@ -173,7 +195,7 @@ local function makeBoxGui(targetPart, targetName)
 	nameLabel.Parent = billboard
 
 	local imageLabel = Instance.new("ImageLabel")
-	imageLabel.Name = "Dot"
+	imageLabel.Name = "pZo8hMcEt3"
 	imageLabel.Size = UDim2.new(0, 20, 0, 20)
 	imageLabel.Position = UDim2.new(0.5, -10, 0, 20)
 	imageLabel.BackgroundTransparency = 1
@@ -184,7 +206,7 @@ local function makeBoxGui(targetPart, targetName)
 	imageLabel.Parent = billboard
 
 	local distLabel = Instance.new("TextLabel")
-	distLabel.Name = "DistLabel"
+	distLabel.Name = "jUv4dRyHf6"
 	distLabel.Size = UDim2.new(1, 0, 0, 18)
 	distLabel.Position = UDim2.new(0, 0, 0, 42)
 	distLabel.BackgroundTransparency = 1
@@ -210,11 +232,11 @@ end
 
 local function makeTracerObjects(targetPart)
 	local targetAttach = Instance.new("Attachment")
-	targetAttach.Name = "MyaTracerTarget"
+	targetAttach.Name = "nHd6pLsRc1"
 	targetAttach.Parent = targetPart
 
 	local originPart = Instance.new("Part")
-	originPart.Name = "MyaTracerOrigin"
+	originPart.Name = "qJe5uAzNk0"
 	originPart.Size = Vector3.new(0.2, 0.2, 0.2)
 	originPart.Transparency = 1
 	originPart.CanCollide = false
@@ -224,11 +246,11 @@ local function makeTracerObjects(targetPart)
 	originPart.Parent = getTracerHoldFolder()
 
 	local originAttach = Instance.new("Attachment")
-	originAttach.Name = "MyaTracerOriginAttachment"
+	originAttach.Name = "eLw0fBxKm9"
 	originAttach.Parent = originPart
 
 	local beam = Instance.new("Beam")
-	beam.Name = "MyaTracerBeam"
+	beam.Name = "wYt3gKvBm8"
 	beam.Attachment0 = originAttach
 	beam.Attachment1 = targetAttach
 	beam.Enabled = false
@@ -316,7 +338,7 @@ local function updateEspColor(color)
 	espColor = color
 	for _, data in pairs(renderStore) do
 		if data.billboard then
-			local dot = data.billboard:FindFirstChild("Dot")
+			local dot = data.billboard:FindFirstChild("pZo8hMcEt3")
 			if dot and dot:IsA("ImageLabel") then
 				dot.ImageColor3 = color
 			end
@@ -527,7 +549,7 @@ local function updateVisuals()
 					activeKeys[targetKey] = true
 					if data.billboard then
 						data.billboard.Enabled = espEnabled
-						local distLabel = data.billboard:FindFirstChild("DistLabel")
+						local distLabel = data.billboard:FindFirstChild("jUv4dRyHf6")
 						if distLabel and distLabel:IsA("TextLabel") then
 							local dist = (myPos - hrp.Position).Magnitude
 							distLabel.Text = string.format("%.0f m", dist)
@@ -564,7 +586,7 @@ local function updateVisuals()
 				activeKeys[zombieModel] = true
 				if data.billboard then
 					data.billboard.Enabled = espEnabled
-					local distLabel = data.billboard:FindFirstChild("DistLabel")
+					local distLabel = data.billboard:FindFirstChild("jUv4dRyHf6")
 					if distLabel and distLabel:IsA("TextLabel") then
 						local dist = (myPos - hrp.Position).Magnitude
 						distLabel.Text = string.format("%.0f m", dist)
@@ -683,7 +705,7 @@ local function stopEspLoop()
 	zombieCacheAt = 0
 end
 
-visualSection:AddToggle("AftermathESP", {
+visualSection:AddToggle("dKx8vZpRm4", {
 	Title = "Player ESP",
 	Icon = "solar/eye-bold",
 	Default = false,
@@ -692,7 +714,7 @@ visualSection:AddToggle("AftermathESP", {
 		startEspLoop()
 	end,
 })
-visualSection:AddToggle("AftermathTracer", {
+visualSection:AddToggle("uJb3cFyNh7", {
 	Title = "Tracer",
 	Icon = "solar/share-bold",
 	Default = false,
@@ -701,7 +723,7 @@ visualSection:AddToggle("AftermathTracer", {
 		startEspLoop()
 	end,
 })
-visualSection:AddToggle("AftermathTeamCheck", {
+visualSection:AddToggle("oWe6aGiLq9", {
 	Title = "Team Check",
 	Icon = "solar/users-group-rounded-bold",
 	Default = false,
@@ -709,7 +731,7 @@ visualSection:AddToggle("AftermathTeamCheck", {
 		teamCheck = v
 	end,
 })
-visualSection:AddToggle("AftermathZombieTargets", {
+visualSection:AddToggle("yPt1zXkDs5", {
 	Title = "Include Zombies",
 	Icon = "solar/ghost-bold",
 	Default = true,
@@ -719,7 +741,7 @@ visualSection:AddToggle("AftermathZombieTargets", {
 		zombieCacheAt = 0
 	end,
 })
-visualSection:AddColorpicker("AftermathESPColor", {
+visualSection:AddColorpicker("hCn0rMwOj6", {
 	Title = "ESP Color",
 	Icon = "solar/pallete-bold",
 	Default = espColor,
@@ -729,10 +751,6 @@ visualSection:AddColorpicker("AftermathESPColor", {
 	end,
 })
 
-SaveManager:SetLibrary(Fluent)
-InterfaceManager:SetLibrary(Fluent)
-InterfaceManager:SetFolder("MyaHub")
-SaveManager:SetFolder("MyaHub/Config")
 task.defer(function()
 	if not aftermathActive then
 		return
@@ -748,30 +766,45 @@ task.defer(function()
 	end)
 end)
 
+task.defer(function()
+	task.wait()
+	pcall(function()
+		getgenv().ShineEnabled = ifacePre.Animated ~= false
+		Fluent:SetTheme(pickFluentTheme(ifacePre.Theme))
+	end)
+	pcall(function()
+		Fluent:ToggleTransparency(ifacePre.Transparency ~= false)
+	end)
+	pcall(function()
+		InterfaceManager:ApplyFont(ifacePre.Font or "GothamSSm")
+	end)
+	hideFluentGui(false)
+end)
+
 local function unloadAftermathModule()
 	if moduleUnloaded then
 		return
 	end
 	moduleUnloaded = true
 
-	_G.MYA_AFTERMATH_112_LOADED = false
+	_G.tPx7kNqZv3 = false
 	aftermathActive = false
 
 	stopEspLoop()
 
-	_G.aftermath_purge_residual_visuals = nil
+	_G.mRo2jHcYn8 = nil
 	pcall(function()
 		if Window and Window.Destroy then
 			Window:Destroy()
 		end
 	end)
 
-	_G.unload_aftermath_112237800564065 = nil
+	_G.sLf9wDvGp1 = nil
 end
 
-_G.unload_aftermath_112237800564065 = unloadAftermathModule
-_G.MYA_AFTERMATH_112_LOADED = true
-_G.aftermath_purge_residual_visuals = sweepResidualMyaVisuals
+_G.sLf9wDvGp1 = unloadAftermathModule
+_G.tPx7kNqZv3 = true
+_G.mRo2jHcYn8 = sweepResidualMyaVisuals
 
 notify(Fluent, "Aftermath", "Module loaded", 3)
 Window:SelectTab(1)

@@ -13,6 +13,7 @@ Index of extension points. Expand rows as features land.
 | `MenuKeybind` (`InterfaceManager`) | Fluent settings | User-changeable minimize/show keybind; default is `RightShift` |
 | `MyaOperationOne/layout.json` | Operation One local file | Persists Fluent window size/position |
 | `mya_universal_configs/autoload.txt` | Operation One local file | Stores selected autoload profile name for manual autoload |
+| `MYA_PREFETCH_FLUENT_SRC` | `getgenv()` | Loader-prefetched Fluent source reused by hub/game/universal windows |
 
 | `ANON_ANALYTICS_ENABLED` | `config.luau` | Global toggle for Discord execution logging |
 | `ANON_ANALYTICS_WEBHOOK_URL` | `config.luau` | Discord webhook URL for logging |

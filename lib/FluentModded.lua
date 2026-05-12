@@ -362,6 +362,197 @@ local aa = {
                 return _result
             end
         end
+        -- AddBind: toggle row with inline key pill + mode pill.
+        -- Uses the Toggle module from q for the base row, then injects pills directly
+        -- into the created Frame — no external parent tracking needed.
+        z.AddBind = function(C, D, E)
+            local _toggleMod = nil
+            for _, _m in ipairs(q) do
+                if _m.__type == "Toggle" then _toggleMod = _m; break end
+            end
+            if not _toggleMod then return nil end
+
+            _toggleMod.Container   = C.Container
+            _toggleMod.Type        = C.Type
+            _toggleMod.ScrollFrame = C.ScrollFrame
+            _toggleMod.Library     = x
+
+            local _enabled     = E.Default or false
+            local _bindKey     = nil
+            local _bindMode    = "Always"
+            local _toggleState = false
+            local _listening   = false
+            local _prevKey     = nil
+            local _onEnabled   = E.onEnabled
+
+            local _origCb = E.Callback or function() end
+            E.Callback = function(v)
+                _enabled     = v
+                _toggleState = false
+                if _onEnabled then _onEnabled(v) end
+                _origCb(v)
+            end
+
+            local h = _toggleMod:New(D, E)
+            if not h or not h.Frame then return h end
+
+            local rowFrame = h.Frame
+            pcall(function() rowFrame.ClipsDescendants = false end)
+
+            local CB_BG     = Color3.fromRGB(22, 28, 58)
+            local CB_TEXT   = Color3.fromRGB(175, 185, 225)
+            local CB_LISTEN = Color3.fromRGB(255, 210, 60)
+            local CB_POPUP  = Color3.fromRGB(14, 18, 42)
+            local KEY_W, PILL_H, MOD_W = 46, 20, 50
+            -- Toggle switch is 36px wide with 10px right margin → 46px from row's right edge.
+            local SWITCH_GAP = 46
+
+            local function _kLabel(key)
+                if not key then return "none" end
+                if key.EnumType == Enum.KeyCode then
+                    if key == Enum.KeyCode.Unknown then return "none" end
+                    local _ab = { RightShift="RShift", LeftShift="LShift", RightControl="RCtrl",
+                        LeftControl="LCtrl", RightAlt="RAlt", LeftAlt="LAlt",
+                        BackSpace="BkSp", Return="Enter", Space="Space" }
+                    local _n = key.Name
+                    return _ab[_n] or (#_n <= 5 and _n or _n:sub(1,4))
+                elseif key.EnumType == Enum.UserInputType then
+                    local _m = {MouseButton1="M1",MouseButton2="M2",MouseButton3="M3"}
+                    return _m[key.Name] or key.Name:sub(1,4)
+                end
+                return "none"
+            end
+
+            -- Mode pill (right of key pill, left of toggle switch)
+            local _modePill = Instance.new("TextButton")
+            _modePill.Size             = UDim2.fromOffset(MOD_W, PILL_H)
+            _modePill.AnchorPoint      = Vector2.new(1, 0.5)
+            _modePill.Position         = UDim2.new(1, -(SWITCH_GAP + 2), 0.5, 0)
+            _modePill.BackgroundColor3 = CB_BG
+            _modePill.TextColor3       = CB_TEXT
+            _modePill.Font             = Enum.Font.GothamBold
+            _modePill.TextSize         = 10
+            _modePill.Text             = "..."
+            _modePill.BorderSizePixel  = 0
+            _modePill.AutoButtonColor  = false
+            _modePill.ZIndex           = 8
+            _modePill.Parent           = rowFrame
+            Instance.new("UICorner", _modePill).CornerRadius = UDim.new(0, 5)
+
+            -- Key pill (left of mode pill)
+            local _keyPill = Instance.new("TextButton")
+            _keyPill.Size             = UDim2.fromOffset(KEY_W, PILL_H)
+            _keyPill.AnchorPoint      = Vector2.new(1, 0.5)
+            _keyPill.Position         = UDim2.new(1, -(SWITCH_GAP + 2 + MOD_W + 4), 0.5, 0)
+            _keyPill.BackgroundColor3 = CB_BG
+            _keyPill.TextColor3       = CB_TEXT
+            _keyPill.Font             = Enum.Font.GothamBold
+            _keyPill.TextSize         = 10
+            _keyPill.Text             = "none"
+            _keyPill.BorderSizePixel  = 0
+            _keyPill.AutoButtonColor  = false
+            _keyPill.ZIndex           = 8
+            _keyPill.Parent           = rowFrame
+            Instance.new("UICorner", _keyPill).CornerRadius = UDim.new(0, 5)
+
+            -- Mode popup — floats above section scroll, parented to the Fluent ScreenGui.
+            local _popup = Instance.new("Frame")
+            _popup.Visible          = false
+            _popup.Size             = UDim2.fromOffset(84, 92)
+            _popup.BackgroundColor3 = CB_POPUP
+            _popup.BorderSizePixel  = 0
+            _popup.ZIndex           = 50
+            _popup.Parent           = x.GUI
+            local _ps = Instance.new("UIStroke", _popup)
+            _ps.Color = Color3.fromRGB(40, 50, 100); _ps.Thickness = 1
+            Instance.new("UICorner", _popup).CornerRadius = UDim.new(0, 7)
+            local _pl = Instance.new("UIListLayout", _popup); _pl.Padding = UDim.new(0, 3)
+            local _pp = Instance.new("UIPadding", _popup)
+            _pp.PaddingLeft   = UDim.new(0,5); _pp.PaddingRight  = UDim.new(0,5)
+            _pp.PaddingTop    = UDim.new(0,5); _pp.PaddingBottom = UDim.new(0,5)
+
+            for _, _mode in ipairs({"Hold","Toggle","Always"}) do
+                local _btn = Instance.new("TextButton")
+                _btn.Size             = UDim2.new(1,0,0,22)
+                _btn.BackgroundColor3 = CB_BG; _btn.TextColor3 = CB_TEXT
+                _btn.Font             = Enum.Font.Gotham; _btn.TextSize = 11
+                _btn.Text             = _mode; _btn.BorderSizePixel = 0
+                _btn.AutoButtonColor  = false; _btn.ZIndex = 51; _btn.Parent = _popup
+                Instance.new("UICorner", _btn).CornerRadius = UDim.new(0, 5)
+                _btn.MouseButton1Click:Connect(function()
+                    _bindMode = _mode; _modePill.Text = _mode
+                    _toggleState = false; _popup.Visible = false
+                end)
+            end
+
+            _modePill.MouseButton1Click:Connect(function()
+                if _popup.Visible then _popup.Visible = false; return end
+                local _abs = _modePill.AbsolutePosition; local _sz = _modePill.AbsoluteSize
+                _popup.Position = UDim2.fromOffset(_abs.X - 4, _abs.Y + _sz.Y + 4)
+                _popup.Visible = true
+            end)
+
+            _keyPill.MouseButton1Click:Connect(function()
+                if _listening then
+                    _listening = false; _bindKey = _prevKey
+                    _keyPill.Text = _kLabel(_bindKey); _keyPill.BackgroundColor3 = CB_BG; return
+                end
+                _listening = true; _prevKey = _bindKey
+                _keyPill.Text = "..."; _keyPill.BackgroundColor3 = CB_LISTEN
+                _popup.Visible = false
+            end)
+
+            k.InputBegan:Connect(function(input, gp)
+                if _popup.Visible then _popup.Visible = false end
+                if _listening then
+                    if input.KeyCode == Enum.KeyCode.Escape then
+                        _listening = false; _bindKey = _prevKey
+                        _keyPill.Text = _kLabel(_bindKey); _keyPill.BackgroundColor3 = CB_BG; return
+                    end
+                    local _rec = nil
+                    local _ut  = input.UserInputType
+                    if _ut == Enum.UserInputType.Keyboard then
+                        if input.KeyCode ~= Enum.KeyCode.Unknown then _rec = input.KeyCode end
+                    elseif _ut == Enum.UserInputType.MouseButton1 then _rec = Enum.UserInputType.MouseButton1
+                    elseif _ut == Enum.UserInputType.MouseButton2 then _rec = Enum.UserInputType.MouseButton2
+                    elseif _ut == Enum.UserInputType.MouseButton3 then _rec = Enum.UserInputType.MouseButton3
+                    end
+                    if _rec then
+                        _listening = false; _bindKey = _rec
+                        _keyPill.Text = _kLabel(_rec); _keyPill.BackgroundColor3 = CB_BG
+                    end
+                    return
+                end
+                if not gp and _bindMode == "Toggle" and _bindKey then
+                    local _hit = false
+                    if _bindKey.EnumType == Enum.KeyCode and input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == _bindKey then _hit = true
+                    elseif _bindKey.EnumType == Enum.UserInputType and input.UserInputType == _bindKey then _hit = true end
+                    if _hit then _toggleState = not _toggleState end
+                end
+            end)
+
+            -- Bind API attached directly to the Toggle object returned by Toggle:New.
+            h.isActive = function()
+                if not _enabled then return false end
+                if not _bindKey or _bindMode == "Always" then return true end
+                if _bindMode == "Hold" then
+                    if _bindKey.EnumType == Enum.KeyCode then return k:IsKeyDown(_bindKey)
+                    elseif _bindKey.EnumType == Enum.UserInputType then return k:IsMouseButtonPressed(_bindKey) end
+                    return false
+                end
+                return _toggleState
+            end
+            h.getEnabled  = function() return _enabled end
+            h.bindUnmount = function()
+                pcall(function() _keyPill:Destroy() end)
+                pcall(function() _modePill:Destroy() end)
+                pcall(function() _popup:Destroy() end)
+            end
+
+            if x.Options then x.Options[D] = h end
+            return h
+        end
+
         x.Elements = z
         function x.CreateWindow(C, D)
             assert(D.Title, "Window - Missing Title")
@@ -3814,6 +4005,16 @@ local aa = {
                 {u, e("UISizeConstraint", {MinSize = Vector2.new(170, 0)})}
             )
             table.insert(k.OpenFrames, v)
+            -- Auto-close when the window is minimized (Root.Visible → false).
+            -- The popup is parented to GUI, not Root, so it must be closed manually.
+            pcall(function()
+                local _wr = k.Window and k.Window.Root
+                if _wr then
+                    c.AddSignal(_wr:GetPropertyChangedSignal("Visible"), function()
+                        if not _wr.Visible and l.Opened then l:Close() end
+                    end)
+                end
+            end)
             local w, x = function()
                     local w = 0
                     if ai.ViewportSize.Y - p.AbsolutePosition.Y < v.AbsoluteSize.Y - 5 then

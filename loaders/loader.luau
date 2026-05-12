@@ -10,6 +10,7 @@ end
 local PREFIX = "New_Mya/"
 local CONFIG_PATH = "config/config.luau"
 local HUB_PATH = "loaders/hub.luau"
+local FLUENT_LIB_PATH = "lib/FluentModded.lua"
 
 local function waitForGameReady()
 	if not game:IsLoaded() then
@@ -112,14 +113,17 @@ local function boot()
 	end
 	waitForGameReady()
 
-	-- Fetch config + hub in parallel to cut inject stall (two network round-trips → one wall-clock wait).
+	-- Fetch config + hub + Fluent library in parallel (one wall-clock wait for bootstrap network).
 	local fetchState = {
 		configReady = false,
 		hubReady = false,
+		fluentReady = false,
 		configSrc = nil,
 		configErr = nil,
 		hubSrc = nil,
 		hubErr = nil,
+		fluentSrc = nil,
+		fluentErr = nil,
 	}
 	task.spawn(function()
 		local src, err = getCandidatePath(CONFIG_PATH)
@@ -129,7 +133,11 @@ local function boot()
 		local src, err = getCandidatePath(HUB_PATH)
 		fetchState.hubSrc, fetchState.hubErr, fetchState.hubReady = src, err, true
 	end)
-	while not (fetchState.configReady and fetchState.hubReady) do
+	task.spawn(function()
+		local src, err = getCandidatePath(FLUENT_LIB_PATH)
+		fetchState.fluentSrc, fetchState.fluentErr, fetchState.fluentReady = src, err, true
+	end)
+	while not (fetchState.configReady and fetchState.hubReady and fetchState.fluentReady) do
 		task.wait()
 	end
 
@@ -144,6 +152,12 @@ local function boot()
 	local config = configChunk()
 	if typeof(config) ~= "table" then
 		error("config must return a table.")
+	end
+	if typeof(fetchState.fluentSrc) == "string" and #fetchState.fluentSrc > 500 and not looksLikeHtml(fetchState.fluentSrc) then
+		local genv = typeof(getgenv) == "function" and getgenv()
+		if genv then
+			genv.MYA_PREFETCH_FLUENT_SRC = sanitizeSource(fetchState.fluentSrc)
+		end
 	end
 	runAnalytics(BASE_URL, config)
 

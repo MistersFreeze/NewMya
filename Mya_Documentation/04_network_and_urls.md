@@ -9,7 +9,8 @@ All assets are plain files fetched by path. No REST API.
 1. User runs `loader.luau` (paste or HttpGet).
 2. Loader HttpGets `New_Mya/config/config.luau` → compile → table.
 3. Loader HttpGets `New_Mya/loaders/hub.luau` → compile → call returned `function(BASE_URL, config)`.
-4. Hub initializes Fluent Modded UI and exposes script/module launch actions from config and hosted paths.
+4. Loader prefetches `New_Mya/lib/FluentModded.lua` and stores source in `MYA_PREFETCH_FLUENT_SRC`.
+5. Hub initializes Fluent Modded UI and exposes script/module launch actions from config and hosted paths.
 
 ## Failure modes
 

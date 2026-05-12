@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rm -rf /c/Users/Lanzo/Desktop/New_Mya/games/__TRACKED_VAR__)",
+      "Bash(cp -r /c/Users/Lanzo/Desktop/MyaLoader/games/__TRACKED_VAR__ /c/Users/Lanzo/Desktop/New_Mya/games/__TRACKED_VAR__)",
+      "Bash(cp /c/Users/Lanzo/Desktop/MyaLoader/games/_template.lua /c/Users/Lanzo/Desktop/New_Mya/games/_template.lua)",
+      "Bash(cp /c/Users/Lanzo/Desktop/MyaLoader/games/example.lua /c/Users/Lanzo/Desktop/New_Mya/games/example.lua)",
+      "Bash(ls:*)",
+      "Bash(wc:*)",
+      "Bash(grep -n \"^[[:space:]]*local.*Add\" \"C:\\\\\\\\Users\\\\\\\\Lanzo\\\\\\\\Desktop\\\\\\\\New_Mya\\\\\\\\lib\\\\\\\\FluentModded.lua\")",
+      "Bash(grep:*)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\Lanzo\\\\Desktop\\\\MyaLoader\" -Recurse -File)",
+      "Bash(Select-Object FullName)"
+    ]
+  }
+}

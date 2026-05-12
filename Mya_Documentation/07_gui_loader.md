@@ -35,6 +35,9 @@ Recommended baseline:
 - Prefer `Acrylic = false` on lower-end environments for smoother drag
 - Avoid unnecessary extra ScreenGuis layered over Fluent
 - Keep heavy logic out of per-frame UI callbacks
+- Preload InterfaceManager settings before creating the window
+- Reuse prefetch source (`MYA_PREFETCH_FLUENT_SRC`) to avoid duplicate Fluent downloads
+- Reveal the Fluent ScreenGui only after theme/transparency/font and layout sync is applied
 
 ## UI copy rules
 

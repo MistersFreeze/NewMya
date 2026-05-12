@@ -17,3 +17,5 @@ Document each game’s GUI approach in the game folder README or a short `CONTEX
 - In-game config systems should preserve user-selected menu bind values
 - Operation One GUI persists window size/position to `MyaOperationOne/layout.json`
 - Operation One config UI includes manual autoload selection via `mya_universal_configs/autoload.txt`
+- Operation One silent aim has been removed from runtime load order and GUI controls
+- Universal and game GUIs should preload saved interface settings before window creation to avoid one-frame default-theme/layout flashes

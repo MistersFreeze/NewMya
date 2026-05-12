@@ -12,7 +12,7 @@ Hosted URLs are `BASE_URL .. "New_Mya/loaders/<file>"` when the repo root is the
 
 ## Local dev injection
 
-Serve repo root:
+Serve `New_Mya` folder:
 
 ```bash
 python -m http.server 8080
@@ -22,7 +22,7 @@ Inject:
 
 ```lua
 getgenv().MYA_BASE_URL = "http://127.0.0.1:8080/"
-loadstring(game:HttpGet("http://127.0.0.1:8080/New_Mya/loaders/loader.luau", true))()
+loadstring(game:HttpGet("http://127.0.0.1:8080/loaders/loader.luau", true))()
 ```
 
 ## Public injection
