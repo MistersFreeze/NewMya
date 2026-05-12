@@ -4476,6 +4476,10 @@ local aa = {
         local af, ag = game:GetService "UserInputService", ab.Parent.Parent
         local ah = ac(ag.Creator)
         local ai, aj, c = ah.New, ag.Components, {}
+        -- Precompute M4/M5 enums once for the keybind widget.
+        local _MB4, _MB5
+        pcall(function() _MB4 = Enum.UserInputType.MouseButton4 end)
+        pcall(function() _MB5 = Enum.UserInputType.MouseButton5 end)
         c.__index = c
         c.__type = "Keybind"
         function c.New(d, e, f)
@@ -4574,15 +4578,11 @@ local aa = {
                         return false
                     end
                     local n = h.Value
-                    if n == "MouseLeft"   then return af:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
-                    elseif n == "MouseRight"  then return af:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
-                    elseif n == "MouseMiddle" then return af:IsMouseButtonPressed(Enum.UserInputType.MouseButton3)
-                    elseif n == "MouseButton4" then
-                        local ok,mb = pcall(function() return Enum.UserInputType.MouseButton4 end)
-                        return ok and mb and af:IsMouseButtonPressed(mb) or false
-                    elseif n == "MouseButton5" then
-                        local ok,mb = pcall(function() return Enum.UserInputType.MouseButton5 end)
-                        return ok and mb and af:IsMouseButtonPressed(mb) or false
+                    if     n == "MouseLeft"    then return af:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
+                    elseif n == "MouseRight"   then return af:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
+                    elseif n == "MouseMiddle"  then return af:IsMouseButtonPressed(Enum.UserInputType.MouseButton3)
+                    elseif n == "MouseButton4" then return _MB4 ~= nil and af:IsMouseButtonPressed(_MB4) or false
+                    elseif n == "MouseButton5" then return _MB5 ~= nil and af:IsMouseButtonPressed(_MB5) or false
                     else return af:IsKeyDown(Enum.KeyCode[h.Value]) end
                 else
                     return h.Toggled
@@ -4631,24 +4631,20 @@ local aa = {
                                 elseif o.UserInputType == Enum.UserInputType.MouseButton3 then
                                     p = "MouseMiddle"
                                 else
-                                    local ok4,mb4 = pcall(function() return Enum.UserInputType.MouseButton4 end)
-                                    local ok5,mb5 = pcall(function() return Enum.UserInputType.MouseButton5 end)
-                                    if ok4 and mb4 and o.UserInputType == mb4 then p = "MouseButton4"
-                                    elseif ok5 and mb5 and o.UserInputType == mb5 then p = "MouseButton5" end
+                                    if _MB4 and o.UserInputType == _MB4 then p = "MouseButton4"
+                                    elseif _MB5 and o.UserInputType == _MB5 then p = "MouseButton5" end
                                 end
                                 local s
                                 s =
                                     af.InputEnded:Connect(
                                     function(t)
-                                        local _mb4ok,_mb4 = pcall(function() return Enum.UserInputType.MouseButton4 end)
-                                        local _mb5ok,_mb5 = pcall(function() return Enum.UserInputType.MouseButton5 end)
                                         if
                                             t.KeyCode.Name == p or
                                                 p == "MouseLeft"    and t.UserInputType == Enum.UserInputType.MouseButton1 or
                                                 p == "MouseRight"   and t.UserInputType == Enum.UserInputType.MouseButton2 or
                                                 p == "MouseMiddle"  and t.UserInputType == Enum.UserInputType.MouseButton3 or
-                                                p == "MouseButton4" and _mb4ok and _mb4 and t.UserInputType == _mb4 or
-                                                p == "MouseButton5" and _mb5ok and _mb5 and t.UserInputType == _mb5
+                                                p == "MouseButton4" and _MB4 and t.UserInputType == _MB4 or
+                                                p == "MouseButton5" and _MB5 and t.UserInputType == _MB5
                                          then
                                             i = false
                                             k.Text = p
@@ -4672,15 +4668,11 @@ local aa = {
                         if h.Mode == "Toggle" then
                             local n = h.Value
                             local _triggered = false
-                            if n == "MouseLeft"    then _triggered = m.UserInputType == Enum.UserInputType.MouseButton1
+                            if     n == "MouseLeft"    then _triggered = m.UserInputType == Enum.UserInputType.MouseButton1
                             elseif n == "MouseRight"   then _triggered = m.UserInputType == Enum.UserInputType.MouseButton2
                             elseif n == "MouseMiddle"  then _triggered = m.UserInputType == Enum.UserInputType.MouseButton3
-                            elseif n == "MouseButton4" then
-                                local ok,mb = pcall(function() return Enum.UserInputType.MouseButton4 end)
-                                _triggered = ok and mb and m.UserInputType == mb
-                            elseif n == "MouseButton5" then
-                                local ok,mb = pcall(function() return Enum.UserInputType.MouseButton5 end)
-                                _triggered = ok and mb and m.UserInputType == mb
+                            elseif n == "MouseButton4" then _triggered = _MB4 ~= nil and m.UserInputType == _MB4
+                            elseif n == "MouseButton5" then _triggered = _MB5 ~= nil and m.UserInputType == _MB5
                             elseif m.UserInputType == Enum.UserInputType.Keyboard then
                                 _triggered = m.KeyCode.Name == n
                             end

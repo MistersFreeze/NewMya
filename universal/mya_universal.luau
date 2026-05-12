@@ -157,9 +157,14 @@ return function(BASE_URL, config)
 	local visParams = RaycastParams.new()
 	visParams.FilterType  = Enum.RaycastFilterType.Exclude
 	visParams.IgnoreWater = true
+	-- Exclude ALL player characters so other players don't block LOS checks.
+	-- Rebuilt each frame inside the render loop.
 	local function updateSharedVisFilter()
-		local c = localPlayer.Character
-		visParams.FilterDescendantsInstances = c and { c } or {}
+		local chars = {}
+		for _, plr in ipairs(Players:GetPlayers()) do
+			if plr.Character then chars[#chars + 1] = plr.Character end
+		end
+		visParams.FilterDescendantsInstances = chars
 	end
 	updateSharedVisFilter()
 
@@ -189,6 +194,11 @@ return function(BASE_URL, config)
 	-- Default mode "Always" = feature active whenever Enable is ON, no key needed.
 	-- "Hold" = must hold the bound key. "Toggle" = press key to latch on/off.
 	-- Keybind + mode are auto-saved to the "autoload" config on change.
+
+	-- Precompute M4/M5 enum values once — avoids pcall overhead inside hot callbacks.
+	local MB4, MB5
+	pcall(function() MB4 = Enum.UserInputType.MouseButton4 end)
+	pcall(function() MB5 = Enum.UserInputType.MouseButton5 end)
 
 	local function makeBind(section, opts)
 		local enabled     = opts.default or false
@@ -237,20 +247,15 @@ return function(BASE_URL, config)
 					if     kv == "MouseLeft"    then hit = input.UserInputType == Enum.UserInputType.MouseButton1
 					elseif kv == "MouseRight"   then hit = input.UserInputType == Enum.UserInputType.MouseButton2
 					elseif kv == "MouseMiddle"  then hit = input.UserInputType == Enum.UserInputType.MouseButton3
-					elseif kv == "MouseButton4" then
-						local ok,mb = pcall(function() return Enum.UserInputType.MouseButton4 end)
-						hit = ok and mb and input.UserInputType == mb
-					elseif kv == "MouseButton5" then
-						local ok,mb = pcall(function() return Enum.UserInputType.MouseButton5 end)
-						hit = ok and mb and input.UserInputType == mb
+					elseif kv == "MouseButton4" then hit = MB4 ~= nil and input.UserInputType == MB4
+					elseif kv == "MouseButton5" then hit = MB5 ~= nil and input.UserInputType == MB5
 					elseif input.UserInputType == Enum.UserInputType.Keyboard then
-						local ok,kc = pcall(function() return Enum.KeyCode[kv] end)
+						local ok, kc = pcall(function() return Enum.KeyCode[kv] end)
 						hit = ok and kc and kc ~= Enum.KeyCode.Unknown and input.KeyCode == kc
 					end
 					if hit then toggleState = not toggleState end
 				end)
 			end)
-			-- Auto-save whenever the keybind key changes.
 			pcall(function()
 				kb:OnChanged(function()
 					toggleState = false
@@ -260,15 +265,11 @@ return function(BASE_URL, config)
 		end
 
 		local function mouseHeld(kv)
-			if kv == "MouseLeft"   then return UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
-			elseif kv == "MouseRight"  then return UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
-			elseif kv == "MouseMiddle" then return UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton3)
-			elseif kv == "MouseButton4" then
-				local ok,mb = pcall(function() return Enum.UserInputType.MouseButton4 end)
-				return ok and mb and UserInputService:IsMouseButtonPressed(mb) or false
-			elseif kv == "MouseButton5" then
-				local ok,mb = pcall(function() return Enum.UserInputType.MouseButton5 end)
-				return ok and mb and UserInputService:IsMouseButtonPressed(mb) or false
+			if     kv == "MouseLeft"    then return UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
+			elseif kv == "MouseRight"   then return UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
+			elseif kv == "MouseMiddle"  then return UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton3)
+			elseif kv == "MouseButton4" then return MB4 ~= nil and UserInputService:IsMouseButtonPressed(MB4)
+			elseif kv == "MouseButton5" then return MB5 ~= nil and UserInputService:IsMouseButtonPressed(MB5)
 			end
 			return false
 		end
@@ -376,10 +377,6 @@ return function(BASE_URL, config)
 		return pc
 	end
 
-	connections[#connections + 1] = localPlayer.CharacterAdded:Connect(function()
-		task.defer(updateSharedVisFilter)
-	end)
-
 	connections[#connections + 1] = Players.PlayerRemoving:Connect(function(p)
 		playerCache[p] = nil
 		for _, mod in ipairs(modules) do
@@ -391,6 +388,9 @@ return function(BASE_URL, config)
 		if not universalActive then return end
 		local cam = Workspace.CurrentCamera
 		if not cam then return end
+
+		-- Rebuild vis filter every frame so respawns and joins are always current.
+		updateSharedVisFilter()
 
 		local screenSize   = cam.ViewportSize
 		local screenCenter = screenSize / 2
