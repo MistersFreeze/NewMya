@@ -57,6 +57,8 @@ return function(BASE_URL, config)
 	SaveManager:SetFolder("MyaUniversal/Cfg")
 	InterfaceManager:LoadSettings()
 	local ifacePre = InterfaceManager.Settings
+	-- Always override whatever was saved — RightShift is the only allowed bind.
+	ifacePre.MenuKeybind = "RightShift"
 
 	-- ── Window layout persistence ─────────────────────────────────────────────────
 
@@ -385,6 +387,15 @@ return function(BASE_URL, config)
 	task.defer(function()
 		if not universalActive then return end
 		pcall(function() InterfaceManager:BuildInterfaceSection(settingsTab) end)
+		-- Force MinimizeKeybind to RightShift after the section is built so any
+		-- previously saved "Delete" or "LeftControl" value cannot take effect.
+		pcall(function()
+			if Fluent.MinimizeKeybind then
+				Fluent.MinimizeKeybind:SetValue("RightShift")
+			end
+			ifacePre.MenuKeybind = "RightShift"
+			InterfaceManager:SaveSettings()
+		end)
 		pcall(function() SaveManager:BuildConfigSection(settingsTab) end)
 		if FloatingButtonManager then
 			pcall(function() FloatingButtonManager:BuildConfigSection(settingsTab) end)
