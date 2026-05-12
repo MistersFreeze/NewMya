@@ -3,6 +3,7 @@ return function(BASE_URL, config)
 	local RunService       = game:GetService("RunService")
 	local Workspace        = game:GetService("Workspace")
 	local UserInputService = game:GetService("UserInputService")
+	local HttpService      = game:GetService("HttpService")
 
 	local localPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
 
@@ -41,16 +42,58 @@ return function(BASE_URL, config)
 		return lib
 	end
 
-	local Fluent          = getFluentSingleton()
-	local SaveManager     = Fluent.SaveManager
-	local InterfaceManager = Fluent.InterfaceManager
+	local Fluent              = getFluentSingleton()
+	local SaveManager         = Fluent.SaveManager
+	local InterfaceManager    = Fluent.InterfaceManager
+	local FloatingButtonManager = Fluent.FloatingButtonManager
 
 	SaveManager:SetLibrary(Fluent)
 	InterfaceManager:SetLibrary(Fluent)
-	InterfaceManager:SetFolder("vRp4nZxKw9")
-	SaveManager:SetFolder("vRp4nZxKw9/Cfg")
+	if FloatingButtonManager then
+		FloatingButtonManager:SetLibrary(Fluent)
+		FloatingButtonManager:SetFolder("MyaUniversal/Floating")
+	end
+	InterfaceManager:SetFolder("MyaUniversal")
+	SaveManager:SetFolder("MyaUniversal/Cfg")
 	InterfaceManager:LoadSettings()
 	local ifacePre = InterfaceManager.Settings
+
+	-- ── Window layout persistence ─────────────────────────────────────────────────
+
+	local LAYOUT_FILE = "MyaUniversal/layout.json"
+
+	local function readLayout()
+		if typeof(readfile) ~= "function" then return nil end
+		local ok, raw = pcall(readfile, LAYOUT_FILE)
+		if not ok or typeof(raw) ~= "string" or #raw == 0 then return nil end
+		local ok2, t = pcall(function() return HttpService:JSONDecode(raw) end)
+		return (ok2 and typeof(t) == "table") and t or nil
+	end
+
+	local function writeLayout(w, h)
+		if typeof(writefile) ~= "function" then return end
+		pcall(function()
+			if typeof(makefolder) == "function" then
+				pcall(makefolder, "MyaUniversal")
+				pcall(makefolder, "MyaUniversal/Cfg")
+				pcall(makefolder, "MyaUniversal/Floating")
+			end
+			local payload = HttpService:JSONEncode({ sx = math.floor(w), sy = math.floor(h) })
+			writefile(LAYOUT_FILE, payload)
+		end)
+	end
+
+	local savedLayout = readLayout()
+	local windowSize  = UDim2.fromOffset(540, 510)
+	if savedLayout then
+		local sx = tonumber(savedLayout.sx)
+		local sy = tonumber(savedLayout.sy)
+		if sx and sy and sx >= 400 and sy >= 300 then
+			windowSize = UDim2.fromOffset(math.floor(sx), math.floor(sy))
+		end
+	end
+
+	-- ── Window creation ───────────────────────────────────────────────────────────
 
 	local function pickTheme(name)
 		if typeof(name) == "string" and table.find(Fluent.Themes, name) then return name end
@@ -69,7 +112,7 @@ return function(BASE_URL, config)
 		Title            = "Mya",
 		SubTitle         = "Universal",
 		TabWidth         = 160,
-		Size             = UDim2.fromOffset(540, 510),
+		Size             = windowSize,
 		Acrylic          = false,
 		Theme            = pickTheme(ifacePre.Theme),
 		MinimizeKey      = Enum.KeyCode.RightShift,
@@ -131,21 +174,42 @@ return function(BASE_URL, config)
 	end
 
 	-- ── Bind widget factory ───────────────────────────────────────────────────────
-	-- Thin wrapper around section:AddBind (implemented directly in FluentModded.lua).
-	-- Pills are built inside the library and parented to the toggle row Frame — they
-	-- hide with the GUI automatically and never need external position tracking.
-	-- Modes: "Always" (no key) | "Hold" (held down) | "Toggle" (latching press).
+	-- Tries section:AddBind (FluentModded key+mode pills).
+	-- Falls back to a plain AddToggle so combat features always work even if
+	-- the library version doesn't expose AddBind on the section object.
 
 	local function makeBind(section, opts)
-		local h = section:AddBind(opts.key, {
-			Title     = opts.title or "Enable",
-			Default   = opts.default or false,
-			onEnabled = opts.onEnabled,
-		})
-		if not h then
-			return { isActive = function() return false end, getEnabled = function() return false end, unmount = function() end }
+		local enabled = opts.default or false
+
+		local ok, h = pcall(function()
+			return section:AddBind(opts.key, {
+				Title     = opts.title or "Enable",
+				Default   = opts.default or false,
+				onEnabled = opts.onEnabled,
+			})
+		end)
+		if ok and h and typeof(h.isActive) == "function" then
+			return {
+				isActive   = h.isActive,
+				getEnabled = h.getEnabled,
+				unmount    = h.bindUnmount or function() end,
+			}
 		end
-		return { isActive = h.isActive, getEnabled = h.getEnabled, unmount = h.bindUnmount or function() end }
+
+		-- Fallback: plain toggle (always active while on; no separate key)
+		section:AddToggle(opts.key, {
+			Title    = opts.title or "Enable",
+			Default  = enabled,
+			Callback = function(v)
+				enabled = v
+				if opts.onEnabled then opts.onEnabled(v) end
+			end,
+		})
+		return {
+			isActive   = function() return enabled end,
+			getEnabled = function() return enabled end,
+			unmount    = function() end,
+		}
 	end
 
 	local ctx = {
@@ -169,15 +233,12 @@ return function(BASE_URL, config)
 
 	local modules = {}
 	local MODULE_PATHS = {
-		-- Visuals (FOV circles removed: they live inside AimAssist and SilentAim)
 		"New_Mya/universal/Visuals/Esp.luau",
 		"New_Mya/universal/Visuals/Tracers.luau",
 		"New_Mya/universal/Visuals/Skeleton.luau",
 		"New_Mya/universal/Visuals/Arrows.luau",
-		-- Combat
 		"New_Mya/universal/Combat/AimAssist.luau",
 		"New_Mya/universal/Combat/SilentAim.luau",
-		-- Movement
 		"New_Mya/universal/Combat/Movement.luau",
 	}
 
@@ -198,8 +259,6 @@ return function(BASE_URL, config)
 	end
 
 	-- ── Shared render loop ────────────────────────────────────────────────────────
-	-- Runs every RenderStepped (no throttle) so drawings track camera without lag.
-	-- Per-player character references are cached so FindFirstChild isn't called every frame.
 
 	local universalActive = true
 	local connections     = {}
@@ -225,6 +284,11 @@ return function(BASE_URL, config)
 				pc.hum  = nil
 				pc.head = nil
 			end
+		elseif char then
+			-- Re-resolve parts that were nil when character first loaded (race condition fix).
+			if not pc.root then pc.root = getRootPart(char) end
+			if not pc.hum  then pc.hum  = char:FindFirstChildWhichIsA("Humanoid") end
+			if not pc.head then pc.head = char:FindFirstChild("Head") end
 		end
 		return pc
 	end
@@ -287,7 +351,6 @@ return function(BASE_URL, config)
 				hpPct    = (function()
 					local hp  = hum.Health
 					local max = hum.MaxHealth
-					-- Guard against math.huge, NaN, and 0 (many games set MaxHealth = math.huge).
 					if max ~= max or max <= 0 or max >= 1e15 then max = 100 end
 					return math.clamp(hp / max, 0, 1)
 				end)(),
@@ -323,7 +386,13 @@ return function(BASE_URL, config)
 		if not universalActive then return end
 		pcall(function() InterfaceManager:BuildInterfaceSection(settingsTab) end)
 		pcall(function() SaveManager:BuildConfigSection(settingsTab) end)
+		if FloatingButtonManager then
+			pcall(function() FloatingButtonManager:BuildConfigSection(settingsTab) end)
+		end
 		pcall(function() SaveManager:LoadAutoloadConfig() end)
+		if FloatingButtonManager then
+			pcall(function() FloatingButtonManager:LoadAutoloadConfig() end)
+		end
 	end)
 
 	task.defer(function()
@@ -337,6 +406,31 @@ return function(BASE_URL, config)
 		hideGui(false)
 	end)
 
+	-- Periodically save window size while the universal is running.
+	local layoutSaveConn
+	layoutSaveConn = RunService.Heartbeat:Connect(function()
+		-- Throttle: save roughly every 5 seconds via a frame counter.
+		-- Use a closure counter instead of os.clock to keep it simple.
+	end)
+	pcall(function() layoutSaveConn:Disconnect() end)
+
+	local layoutTick = 0
+	connections[#connections + 1] = RunService.Heartbeat:Connect(function(dt)
+		if not universalActive then return end
+		layoutTick = layoutTick + dt
+		if layoutTick < 10 then return end
+		layoutTick = 0
+		pcall(function()
+			local root = Window and (Window.Root or Window.Frame)
+			if root and root:IsA("GuiObject") then
+				local s = root.AbsoluteSize
+				if s.X >= 400 and s.Y >= 300 then
+					writeLayout(s.X, s.Y)
+				end
+			end
+		end)
+	end)
+
 	-- ── Unload ────────────────────────────────────────────────────────────────────
 
 	local moduleUnloaded = false
@@ -344,6 +438,16 @@ return function(BASE_URL, config)
 		if moduleUnloaded then return end
 		moduleUnloaded  = true
 		universalActive = false
+		-- Save window size before destroying.
+		pcall(function()
+			local root = Window and (Window.Root or Window.Frame)
+			if root and root:IsA("GuiObject") then
+				local s = root.AbsoluteSize
+				if s.X >= 400 and s.Y >= 300 then
+					writeLayout(s.X, s.Y)
+				end
+			end
+		end)
 		for i = #connections, 1, -1 do
 			pcall(function() connections[i]:Disconnect() end)
 			connections[i] = nil

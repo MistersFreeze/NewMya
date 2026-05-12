@@ -21,6 +21,29 @@ If a game module is removed, also remove its `SUPPORTED_GAMES` entry and any doc
 2. Add new launcher actions under Fluent tabs (`Main`, `Games`, `Scripts`, `Credits`, `Settings`).
 3. If a feature needs a separate interface, launch it from the `Scripts` tab rather than replacing the shell.
 
+## New game script UI rules (mandatory)
+
+Every new game script under `New_Mya/games/` or `New_Mya/universal/` **must** follow these rules:
+
+### UI library
+- Use **Fluent Modded** exclusively. No custom shell implementations.
+- Load via `MYA_PREFETCH_FLUENT_SRC` prefetch → fallback to `lib/FluentModded.lua` → fallback to upstream URL.
+
+### Theme and interface settings
+- Always call `InterfaceManager:SetFolder("MyaYourName")` and `InterfaceManager:LoadSettings()` before `CreateWindow`.
+- Apply saved theme/font/transparency in a `task.defer` after window creation.
+- Add `InterfaceManager:BuildInterfaceSection(settingsTab)` so users can change theme.
+
+### Window size / layout persistence
+- Read `"MyaYourName/layout.json"` with `readfile` before `CreateWindow`; apply saved `sx`/`sy` as the `Size` offset if ≥ 400×300.
+- Save the window's `AbsoluteSize` to `layout.json` with `writefile` on both unload and on a periodic heartbeat (every ~10 s).
+- Use `HttpService:JSONEncode/JSONDecode` for the file format: `{ sx = w, sy = h }`.
+- Guard all `readfile`/`writefile` calls — not all executors support them.
+
+### Default keybind
+- `MinimizeKey = Enum.KeyCode.RightShift` on `CreateWindow`.
+- Add `MenuKeybind` via `InterfaceManager:BuildInterfaceSection` so users can change it.
+
 ## Local test
 
 Set `MYA_LOCAL_ROOT` to your clone path; use `loader_local` pattern or HttpGet to `http://127.0.0.1:8080/` with repo root served.
