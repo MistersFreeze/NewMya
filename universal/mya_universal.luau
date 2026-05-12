@@ -321,7 +321,7 @@ return function(BASE_URL, config)
 		"New_Mya/universal/Visuals/Arrows.luau",
 		"New_Mya/universal/Combat/AimAssist.luau",
 		"New_Mya/universal/Combat/SilentAim.luau",
-		"New_Mya/universal/Combat/Movement.luau",
+		"New_Mya/universal/Movement/Movement.luau",
 	}
 
 	for _, path in ipairs(MODULE_PATHS) do
