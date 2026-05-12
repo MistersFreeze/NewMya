@@ -685,8 +685,13 @@ local aa = {
             if not isfile(f) then return false,"invalid file" end
             local ok,dec=pcall(httpService.JSONDecode,httpService,readfile(f))
             if not ok then return false,"decode error" end
+            local n = 0
             for _,opt in next,dec.objects do
-                if self.Parser[opt.type] then pcall(self.Parser[opt.type].Load,opt.idx,opt) end
+                if self.Parser[opt.type] then
+                    pcall(self.Parser[opt.type].Load,opt.idx,opt)
+                    n = n + 1
+                    if n % 10 == 0 then task.wait() end
+                end
             end
             return true
         end
