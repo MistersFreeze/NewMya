@@ -56,24 +56,8 @@ return function(BASE_URL, config)
 	InterfaceManager:SetFolder("MyaUniversal")
 	SaveManager:SetFolder("MyaUniversal/Cfg")
 
-	-- Patch the options file on disk BEFORE LoadSettings reads it so "Delete" or
-	-- "LeftControl" can never be loaded as the minimize bind.
-	pcall(function()
-		if typeof(writefile) ~= "function" then return end
-		if typeof(makefolder) == "function" then pcall(makefolder, "MyaUniversal") end
-		local optPath = "MyaUniversal/options.json"
-		local opts = {}
-		if typeof(isfile) == "function" and isfile(optPath) and typeof(readfile) == "function" then
-			local ok, t = pcall(function() return HttpService:JSONDecode(readfile(optPath)) end)
-			if ok and typeof(t) == "table" then opts = t end
-		end
-		opts.MenuKeybind = "RightShift"
-		writefile(optPath, HttpService:JSONEncode(opts))
-	end)
-
 	InterfaceManager:LoadSettings()
 	local ifacePre = InterfaceManager.Settings
-	ifacePre.MenuKeybind = "RightShift"
 
 	-- ── Window layout persistence ─────────────────────────────────────────────────
 
@@ -475,14 +459,6 @@ return function(BASE_URL, config)
 
 		-- Settings tab: interface options only.
 		pcall(function() InterfaceManager:BuildInterfaceSection(settingsTab) end)
-		-- Force MinimizeKeybind to RightShift after the section is built.
-		pcall(function()
-			if Fluent.MinimizeKeybind then
-				Fluent.MinimizeKeybind:SetValue("RightShift")
-			end
-			ifacePre.MenuKeybind = "RightShift"
-			InterfaceManager:SaveSettings()
-		end)
 
 		-- Load autoload config AFTER building sections so all Options are registered.
 		pcall(function() SaveManager:LoadAutoloadConfig() end)
