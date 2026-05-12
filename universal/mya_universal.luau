@@ -199,14 +199,52 @@ return function(BASE_URL, config)
 		return nil
 	end
 
+	-- ── Bind save/load ───────────────────────────────────────────────────────────
+
+	local BINDS_FILE = "MyaUniversal/binds.json"
+	local bindsCache = {}
+	pcall(function()
+		if typeof(isfile) == "function" and isfile(BINDS_FILE) and typeof(readfile) == "function" then
+			local ok, t = pcall(function() return HttpService:JSONDecode(readfile(BINDS_FILE)) end)
+			if ok and typeof(t) == "table" then bindsCache = t end
+		end
+	end)
+	local function saveBind(key, bKey, bMode)
+		pcall(function()
+			if typeof(writefile) ~= "function" then return end
+			if typeof(makefolder) == "function" then pcall(makefolder, "MyaUniversal") end
+			bindsCache[key] = { key = bKey, mode = bMode }
+			writefile(BINDS_FILE, HttpService:JSONEncode(bindsCache))
+		end)
+	end
+
 	-- ── Bind widget factory ───────────────────────────────────────────────────────
-	-- Two rows: AddToggle (enable/disable) + AddKeybind (activation key + mode).
-	-- Keybind changes are auto-saved to the "autoload" config so they persist.
-	-- Modes: Always (active when toggle on), Hold (hold key), Toggle (press to latch).
+	-- One row: AddToggle + a pill injected inline into the row's Frame.
+	-- Left-click pill → listen for key. Right-click pill → cycle mode.
+	-- Saved to MyaUniversal/binds.json; loaded on next inject.
 
 	local function makeBind(section, opts)
 		local enabled     = opts.default or false
+		local saved       = bindsCache[opts.key]
+		local bindKey     = saved and saved.key  or nil   -- "Q", "F2", "MouseButton1", …
+		local bindMode    = saved and saved.mode or "Toggle"
 		local toggleState = false
+		local listening   = false
+
+		local function keyLabel(k)
+			if not k then return "none" end
+			local abbr = {
+				RightShift="RShft", LeftShift="LShft", RightControl="RCtrl",
+				LeftControl="LCtrl", RightAlt="RAlt",  LeftAlt="LAlt",
+				BackSpace="BkSp",   Return="Enter",     Space="Spc",
+				MouseButton1="M1",  MouseButton2="M2",  MouseButton3="M3",
+			}
+			return abbr[k] or (#k <= 5 and k or k:sub(1,5))
+		end
+		local MODES = { "Toggle", "Hold", "Always" }
+		local function modeLabel(m)
+			return m == "Always" and "A" or m == "Hold" and "H" or "T"
+		end
 
 		section:AddToggle(opts.key, {
 			Title    = opts.title or "Enable",
@@ -218,60 +256,101 @@ return function(BASE_URL, config)
 			end,
 		})
 
-		local kb      = nil
-		local kbConn  = nil
-
+		-- Inject pills into the toggle row's Frame.
+		local kbPill   = nil
+		local modePill = nil
 		pcall(function()
-			kb = section:AddKeybind(opts.key .. "_kb", {
-				Title   = "Keybind",
-				Default = "None",
-				Mode    = "Toggle",
-			})
+			local elem     = Fluent.Options and Fluent.Options[opts.key]
+			local rowFrame = elem and elem.Frame
+			if not rowFrame or not rowFrame:IsA("GuiObject") then return end
+			pcall(function() rowFrame.ClipsDescendants = false end)
+
+			local SWITCH_GAP = 50  -- toggle switch width + margin from right edge
+			local PILL_H     = 20
+			local KEY_W      = 46
+			local MODE_W     = 20
+			local GAP        = 3
+
+			local function makeBtn(w, xRight, text)
+				local btn = Instance.new("TextButton")
+				btn.Size             = UDim2.fromOffset(w, PILL_H)
+				btn.AnchorPoint      = Vector2.new(1, 0.5)
+				btn.Position         = UDim2.new(1, xRight, 0.5, 0)
+				btn.BackgroundColor3 = Color3.fromRGB(22, 28, 58)
+				btn.TextColor3       = Color3.fromRGB(175, 185, 225)
+				btn.Font             = Enum.Font.GothamBold
+				btn.TextSize         = 10
+				btn.Text             = text
+				btn.BorderSizePixel  = 0
+				btn.AutoButtonColor  = false
+				btn.ZIndex           = 8
+				btn.Parent           = rowFrame
+				Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 5)
+				return btn
+			end
+
+			-- mode pill (right of key pill, left of toggle switch)
+			modePill = makeBtn(MODE_W, -(SWITCH_GAP + GAP), modeLabel(bindMode))
+			-- key pill (left of mode pill)
+			kbPill   = makeBtn(KEY_W,  -(SWITCH_GAP + GAP + MODE_W + GAP), keyLabel(bindKey))
+
+			-- Left-click key pill → listen for next key
+			kbPill.MouseButton1Click:Connect(function()
+				if listening then return end
+				listening = true
+				kbPill.Text      = "…"
+				kbPill.TextColor3 = Color3.fromRGB(255, 210, 60)
+				local conn
+				conn = UserInputService.InputBegan:Connect(function(input, gpe)
+					if gpe then return end
+					listening = false
+					pcall(function() conn:Disconnect() end)
+					if input.KeyCode == Enum.KeyCode.Escape then
+						bindKey = nil
+					elseif input.KeyCode ~= Enum.KeyCode.Unknown then
+						bindKey = input.KeyCode.Name
+					elseif input.UserInputType ~= Enum.UserInputType.None then
+						local n = input.UserInputType.Name
+						if n:find("MouseButton") then bindKey = n end
+					end
+					toggleState       = false
+					kbPill.Text       = keyLabel(bindKey)
+					kbPill.TextColor3 = Color3.fromRGB(175, 185, 225)
+					saveBind(opts.key, bindKey, bindMode)
+				end)
+			end)
+
+			-- Left-click mode pill → cycle mode
+			modePill.MouseButton1Click:Connect(function()
+				local idx = 1
+				for i, m in ipairs(MODES) do if m == bindMode then idx = i break end end
+				bindMode      = MODES[(idx % #MODES) + 1]
+				toggleState   = false
+				modePill.Text = modeLabel(bindMode)
+				saveBind(opts.key, bindKey, bindMode)
+			end)
 		end)
 
-		if kb then
-			-- Track Toggle-mode latch state via InputBegan.
-			pcall(function()
-				kbConn = UserInputService.InputBegan:Connect(function(input, gpe)
-					if gpe or not enabled then return end
-					local mode = kb.Mode or "Toggle"
-					if mode ~= "Toggle" then return end
-					local kv = kb.Value
-					if not kv or kv == "None" then return end
-					local ok, kc = pcall(function() return Enum.KeyCode[kv] end)
-					if ok and kc and kc ~= Enum.KeyCode.Unknown and input.KeyCode == kc then
-						toggleState = not toggleState
-					end
-					local ok2, mb = pcall(function() return Enum.UserInputType[kv] end)
-					if ok2 and mb and input.UserInputType == mb then
-						toggleState = not toggleState
-					end
-				end)
-			end)
-			-- Auto-save whenever the keybind changes.
-			pcall(function()
-				kb:OnChanged(function()
-					toggleState = false
-					pcall(function() SaveManager:Save("autoload") end)
-				end)
-			end)
-		end
+		-- Toggle-mode latch (InputBegan)
+		local kbConn = UserInputService.InputBegan:Connect(function(input, gpe)
+			if gpe or listening or not enabled or bindMode ~= "Toggle" then return end
+			if not bindKey then return end
+			local ok, kc = pcall(function() return Enum.KeyCode[bindKey] end)
+			if ok and kc and kc ~= Enum.KeyCode.Unknown and input.KeyCode == kc then
+				toggleState = not toggleState
+			end
+		end)
 
 		local function isActive()
 			if not enabled then return false end
-			if not kb then return true end
-			local kv   = kb.Value
-			local mode = kb.Mode or "Toggle"
-			if not kv or kv == "None" or kv == "" or mode == "Always" then return true end
-			if mode == "Hold" then
-				local ok, kc = pcall(function() return Enum.KeyCode[kv] end)
+			if not bindKey or bindMode == "Always" then return true end
+			if bindMode == "Hold" then
+				local ok, kc = pcall(function() return Enum.KeyCode[bindKey] end)
 				if ok and kc and kc ~= Enum.KeyCode.Unknown then
 					return UserInputService:IsKeyDown(kc)
 				end
-				local ok2, mb = pcall(function() return Enum.UserInputType[kv] end)
-				if ok2 and mb then
-					return UserInputService:IsMouseButtonPressed(mb)
-				end
+				local ok2, mb = pcall(function() return Enum.UserInputType[bindKey] end)
+				if ok2 and mb then return UserInputService:IsMouseButtonPressed(mb) end
 				return false
 			end
 			return toggleState
@@ -281,7 +360,9 @@ return function(BASE_URL, config)
 			isActive   = isActive,
 			getEnabled = function() return enabled end,
 			unmount    = function()
-				if kbConn then pcall(function() kbConn:Disconnect() end) end
+				pcall(function() kbConn:Disconnect() end)
+				pcall(function() if kbPill   then kbPill:Destroy()   end end)
+				pcall(function() if modePill then modePill:Destroy() end end)
 			end,
 		}
 	end
