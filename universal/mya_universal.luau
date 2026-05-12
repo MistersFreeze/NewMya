@@ -141,6 +141,15 @@ return function(BASE_URL, config)
 	})
 	assert(Window and typeof(Window.AddTab) == "function", "Window creation failed.")
 
+	-- Pre-consume the first-Minimize notification so it never fires on user interaction
+	-- or on unload. GUI is hidden at this point so nothing is visible.
+	pcall(function()
+		local orig = Fluent.Notify
+		Fluent.Notify = function() end
+		Window:Minimize()  -- sets internal C=true, notification flag consumed
+		Fluent.Notify = orig
+	end)
+
 	local visualsTab  = Window:AddTab({ Title = "Visuals",  Icon = "solar/eye-bold" })
 	local combatTab   = Window:AddTab({ Title = "Combat",   Icon = "solar/target-bold" })
 	local movementTab = Window:AddTab({ Title = "Movement", Icon = "solar/running-bold" })
@@ -530,6 +539,8 @@ return function(BASE_URL, config)
 			if mod.unmount then pcall(mod.unmount) end
 		end
 		_G.unload_mya_universal = nil
+		-- Silence all Fluent notifications during teardown so nothing fires.
+		pcall(function() Fluent.Notify = function() end end)
 		pcall(function()
 			if Window and Window.Destroy then Window:Destroy() end
 		end)

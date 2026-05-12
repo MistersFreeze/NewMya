@@ -21,6 +21,30 @@ return function(ctx)
 	end
 
 	-- ─────────────────────────────────────────────────────────────────────────────
+	-- Startup cleanup: destroy any leftover fly/noclip state from a previous injection
+	-- (PlatformStand=true, stale BodyMovers, CanCollide=false all cause the character
+	-- to sink into the ground or behave erratically on re-inject).
+	-- ─────────────────────────────────────────────────────────────────────────────
+
+	pcall(function()
+		local hrp = getHrp()
+		if hrp then
+			local bv = hrp:FindFirstChild("MyaFlyBV")
+			local bg = hrp:FindFirstChild("MyaFlyBG")
+			if bv then bv:Destroy() end
+			if bg then bg:Destroy() end
+		end
+		local hum = getHum()
+		if hum then hum.PlatformStand = false end
+		local c = getChar()
+		if c then
+			for _, p in ipairs(c:GetDescendants()) do
+				if p:IsA("BasePart") then p.CanCollide = true end
+			end
+		end
+	end)
+
+	-- ─────────────────────────────────────────────────────────────────────────────
 	-- Fly
 	-- ─────────────────────────────────────────────────────────────────────────────
 
@@ -169,14 +193,28 @@ return function(ctx)
 
 	local charConn = localPlayer.CharacterAdded:Connect(function()
 		wsOrig, jpOrig = nil, nil
+		-- Fully reset fly so update() sees flyOn=false and calls startFly() on next tick.
+		flyOn = false
 		flyBv, flyBg = nil, nil
 		if flyConn then pcall(function() flyConn:Disconnect() end); flyConn = nil end
-		-- flyBind.isActive() state is preserved; update() will re-call startFly if still active.
+		-- Restore noclip on new character after a short delay to let it finish loading.
 		if noclipOn then
+			noclipOn = false
 			if noclipConn then pcall(function() noclipConn:Disconnect() end); noclipConn = nil end
-			task.wait(0.1)
+			task.wait(0.15)
 			startNoclip()
 		end
+		-- Ensure PlatformStand is clear and CanCollide is restored on the new character.
+		task.defer(function()
+			local hum = getHum()
+			if hum then pcall(function() hum.PlatformStand = false end) end
+			local c = getChar()
+			if c then
+				for _, p in ipairs(c:GetDescendants()) do
+					if p:IsA("BasePart") then pcall(function() p.CanCollide = true end) end
+				end
+			end
+		end)
 	end)
 
 	-- Heartbeat: re-apply walk/jump each tick so games can't reset them.
