@@ -21,9 +21,10 @@ return function(ctx)
 	end
 
 	-- ─────────────────────────────────────────────────────────────────────────────
-	-- Startup cleanup: destroy any leftover fly/noclip state from a previous injection
-	-- (PlatformStand=true, stale BodyMovers, CanCollide=false all cause the character
-	-- to sink into the ground or behave erratically on re-inject).
+	-- Startup cleanup: destroy Mya-named fly movers left from a previous session
+	-- and clear PlatformStand. Do NOT touch CanCollide here — HumanoidRootPart is
+	-- intentionally CanCollide=false in all Roblox characters and forcing it to true
+	-- makes the physics shell solid, sinking the character into the ground.
 	-- ─────────────────────────────────────────────────────────────────────────────
 
 	pcall(function()
@@ -36,12 +37,6 @@ return function(ctx)
 		end
 		local hum = getHum()
 		if hum then hum.PlatformStand = false end
-		local c = getChar()
-		if c then
-			for _, p in ipairs(c:GetDescendants()) do
-				if p:IsA("BasePart") then p.CanCollide = true end
-			end
-		end
 	end)
 
 	-- ─────────────────────────────────────────────────────────────────────────────
@@ -120,27 +115,36 @@ return function(ctx)
 	-- Noclip
 	-- ─────────────────────────────────────────────────────────────────────────────
 
-	local noclipOn   = false
-	local noclipConn = nil
+	local noclipOn      = false
+	local noclipConn   = nil
+	local noclipOrig   = {}  -- { [part] = originalCanCollide }
 
 	local function stopNoclip()
 		noclipOn = false
 		if noclipConn then pcall(function() noclipConn:Disconnect() end); noclipConn = nil end
-		local c = getChar()
-		if c then
-			for _, p in ipairs(c:GetDescendants()) do
-				if p:IsA("BasePart") then pcall(function() p.CanCollide = true end) end
-			end
+		-- Restore each part's original CanCollide exactly as it was.
+		for part, original in pairs(noclipOrig) do
+			pcall(function() part.CanCollide = original end)
 		end
+		noclipOrig = {}
 	end
 
 	local function startNoclip()
 		stopNoclip()
+		-- Snapshot original CanCollide values before touching anything.
+		local c = getChar()
+		if c then
+			for _, p in ipairs(c:GetDescendants()) do
+				if p:IsA("BasePart") then
+					noclipOrig[p] = p.CanCollide
+				end
+			end
+		end
 		noclipOn   = true
 		noclipConn = RunService.Stepped:Connect(function()
-			local c = getChar()
-			if not c then return end
-			for _, p in ipairs(c:GetDescendants()) do
+			local char = getChar()
+			if not char then return end
+			for _, p in ipairs(char:GetDescendants()) do
 				if p:IsA("BasePart") then p.CanCollide = false end
 			end
 		end)
@@ -204,16 +208,10 @@ return function(ctx)
 			task.wait(0.15)
 			startNoclip()
 		end
-		-- Ensure PlatformStand is clear and CanCollide is restored on the new character.
+		-- Clear PlatformStand on the new character; noclipOrig is already reset by stopNoclip.
 		task.defer(function()
 			local hum = getHum()
 			if hum then pcall(function() hum.PlatformStand = false end) end
-			local c = getChar()
-			if c then
-				for _, p in ipairs(c:GetDescendants()) do
-					if p:IsA("BasePart") then pcall(function() p.CanCollide = true end) end
-				end
-			end
 		end)
 	end)
 
