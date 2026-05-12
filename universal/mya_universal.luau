@@ -233,15 +233,21 @@ return function(BASE_URL, config)
 					if gpe or not enabled or bindMode ~= "Toggle" then return end
 					local kv = kb.Value
 					if not kv or kv == "None" then return end
-					local ok, kc = pcall(function() return Enum.KeyCode[kv] end)
-					if ok and kc and kc ~= Enum.KeyCode.Unknown and input.KeyCode == kc then
-						toggleState = not toggleState
-						return
+					local hit = false
+					if     kv == "MouseLeft"    then hit = input.UserInputType == Enum.UserInputType.MouseButton1
+					elseif kv == "MouseRight"   then hit = input.UserInputType == Enum.UserInputType.MouseButton2
+					elseif kv == "MouseMiddle"  then hit = input.UserInputType == Enum.UserInputType.MouseButton3
+					elseif kv == "MouseButton4" then
+						local ok,mb = pcall(function() return Enum.UserInputType.MouseButton4 end)
+						hit = ok and mb and input.UserInputType == mb
+					elseif kv == "MouseButton5" then
+						local ok,mb = pcall(function() return Enum.UserInputType.MouseButton5 end)
+						hit = ok and mb and input.UserInputType == mb
+					elseif input.UserInputType == Enum.UserInputType.Keyboard then
+						local ok,kc = pcall(function() return Enum.KeyCode[kv] end)
+						hit = ok and kc and kc ~= Enum.KeyCode.Unknown and input.KeyCode == kc
 					end
-					local ok2, mb = pcall(function() return Enum.UserInputType[kv] end)
-					if ok2 and mb and input.UserInputType == mb then
-						toggleState = not toggleState
-					end
+					if hit then toggleState = not toggleState end
 				end)
 			end)
 			-- Auto-save whenever the keybind key changes.
@@ -253,22 +259,30 @@ return function(BASE_URL, config)
 			end)
 		end
 
+		local function mouseHeld(kv)
+			if kv == "MouseLeft"   then return UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
+			elseif kv == "MouseRight"  then return UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
+			elseif kv == "MouseMiddle" then return UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton3)
+			elseif kv == "MouseButton4" then
+				local ok,mb = pcall(function() return Enum.UserInputType.MouseButton4 end)
+				return ok and mb and UserInputService:IsMouseButtonPressed(mb) or false
+			elseif kv == "MouseButton5" then
+				local ok,mb = pcall(function() return Enum.UserInputType.MouseButton5 end)
+				return ok and mb and UserInputService:IsMouseButtonPressed(mb) or false
+			end
+			return false
+		end
+
 		local function isActive()
 			if not enabled then return false end
-			-- "Always": active whenever enabled, regardless of key.
 			if bindMode == "Always" then return true end
 			local kv = kb and kb.Value
 			if not kv or kv == "None" or kv == "" then return true end
 			if bindMode == "Hold" then
-				local ok, kc = pcall(function() return Enum.KeyCode[kv] end)
-				if ok and kc and kc ~= Enum.KeyCode.Unknown then
-					return UserInputService:IsKeyDown(kc)
-				end
-				local ok2, mb = pcall(function() return Enum.UserInputType[kv] end)
-				if ok2 and mb then return UserInputService:IsMouseButtonPressed(mb) end
-				return false
+				if kv:sub(1,5) == "Mouse" then return mouseHeld(kv) end
+				local ok,kc = pcall(function() return Enum.KeyCode[kv] end)
+				return ok and kc and kc ~= Enum.KeyCode.Unknown and UserInputService:IsKeyDown(kc) or false
 			end
-			-- "Toggle": latch state driven by kbConn above.
 			return toggleState
 		end
 

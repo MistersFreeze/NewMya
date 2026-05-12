@@ -4574,12 +4574,16 @@ local aa = {
                         return false
                     end
                     local n = h.Value
-                    if n == "MouseLeft" or n == "MouseRight" then
-                        return n == "MouseLeft" and af:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) or
-                            n == "MouseRight" and af:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
-                    else
-                        return af:IsKeyDown(Enum.KeyCode[h.Value])
-                    end
+                    if n == "MouseLeft"   then return af:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
+                    elseif n == "MouseRight"  then return af:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
+                    elseif n == "MouseMiddle" then return af:IsMouseButtonPressed(Enum.UserInputType.MouseButton3)
+                    elseif n == "MouseButton4" then
+                        local ok,mb = pcall(function() return Enum.UserInputType.MouseButton4 end)
+                        return ok and mb and af:IsMouseButtonPressed(mb) or false
+                    elseif n == "MouseButton5" then
+                        local ok,mb = pcall(function() return Enum.UserInputType.MouseButton5 end)
+                        return ok and mb and af:IsMouseButtonPressed(mb) or false
+                    else return af:IsKeyDown(Enum.KeyCode[h.Value]) end
                 else
                     return h.Toggled
                 end
@@ -4624,15 +4628,27 @@ local aa = {
                                     p = "MouseLeft"
                                 elseif o.UserInputType == Enum.UserInputType.MouseButton2 then
                                     p = "MouseRight"
+                                elseif o.UserInputType == Enum.UserInputType.MouseButton3 then
+                                    p = "MouseMiddle"
+                                else
+                                    local ok4,mb4 = pcall(function() return Enum.UserInputType.MouseButton4 end)
+                                    local ok5,mb5 = pcall(function() return Enum.UserInputType.MouseButton5 end)
+                                    if ok4 and mb4 and o.UserInputType == mb4 then p = "MouseButton4"
+                                    elseif ok5 and mb5 and o.UserInputType == mb5 then p = "MouseButton5" end
                                 end
                                 local s
                                 s =
                                     af.InputEnded:Connect(
                                     function(t)
+                                        local _mb4ok,_mb4 = pcall(function() return Enum.UserInputType.MouseButton4 end)
+                                        local _mb5ok,_mb5 = pcall(function() return Enum.UserInputType.MouseButton5 end)
                                         if
                                             t.KeyCode.Name == p or
-                                                p == "MouseLeft" and t.UserInputType == Enum.UserInputType.MouseButton1 or
-                                                p == "MouseRight" and t.UserInputType == Enum.UserInputType.MouseButton2
+                                                p == "MouseLeft"    and t.UserInputType == Enum.UserInputType.MouseButton1 or
+                                                p == "MouseRight"   and t.UserInputType == Enum.UserInputType.MouseButton2 or
+                                                p == "MouseMiddle"  and t.UserInputType == Enum.UserInputType.MouseButton3 or
+                                                p == "MouseButton4" and _mb4ok and _mb4 and t.UserInputType == _mb4 or
+                                                p == "MouseButton5" and _mb5ok and _mb5 and t.UserInputType == _mb5
                                          then
                                             i = false
                                             k.Text = p
@@ -4655,20 +4671,20 @@ local aa = {
                     if not i and not af:GetFocusedTextBox() then
                         if h.Mode == "Toggle" then
                             local n = h.Value
-                            if n == "MouseLeft" or n == "MouseRight" then
-                                if
-                                    n == "MouseLeft" and m.UserInputType == Enum.UserInputType.MouseButton1 or
-                                        n == "MouseRight" and m.UserInputType == Enum.UserInputType.MouseButton2
-                                 then
-                                    h.Toggled = not h.Toggled
-                                    h:DoClick()
-                                end
+                            local _triggered = false
+                            if n == "MouseLeft"    then _triggered = m.UserInputType == Enum.UserInputType.MouseButton1
+                            elseif n == "MouseRight"   then _triggered = m.UserInputType == Enum.UserInputType.MouseButton2
+                            elseif n == "MouseMiddle"  then _triggered = m.UserInputType == Enum.UserInputType.MouseButton3
+                            elseif n == "MouseButton4" then
+                                local ok,mb = pcall(function() return Enum.UserInputType.MouseButton4 end)
+                                _triggered = ok and mb and m.UserInputType == mb
+                            elseif n == "MouseButton5" then
+                                local ok,mb = pcall(function() return Enum.UserInputType.MouseButton5 end)
+                                _triggered = ok and mb and m.UserInputType == mb
                             elseif m.UserInputType == Enum.UserInputType.Keyboard then
-                                if m.KeyCode.Name == n then
-                                    h.Toggled = not h.Toggled
-                                    h:DoClick()
-                                end
+                                _triggered = m.KeyCode.Name == n
                             end
+                            if _triggered then h.Toggled = not h.Toggled; h:DoClick() end
                         end
                     end
                 end
