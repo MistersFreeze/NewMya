@@ -27,6 +27,49 @@ return function(ctx)
 	fovCircle.Color        = Color3.fromRGB(160, 120, 220)
 	fovCircle.Transparency = 0.35
 
+	local fovColor  = Color3.fromRGB(160, 120, 220)
+	local fovStyle  = "Solid"
+	local DASH_COUNT = 24
+	local fovDashLines = {}
+	for i = 1, DASH_COUNT do
+		local l = Drawing.new("Line")
+		l.Visible   = false
+		l.Thickness = 1.5
+		fovDashLines[i] = l
+	end
+	fovCircle.Color = fovColor
+
+	local function drawFovCircle(center, radius)
+		if not showCircle then
+			fovCircle.Visible = false
+			for _, l in ipairs(fovDashLines) do l.Visible = false end
+			return
+		end
+		if fovStyle == "Solid" then
+			fovCircle.Position = center
+			fovCircle.Radius   = radius
+			fovCircle.Color    = fovColor
+			fovCircle.Visible  = true
+			for _, l in ipairs(fovDashLines) do l.Visible = false end
+		else
+			fovCircle.Visible = false
+			local step = (2 * math.pi) / DASH_COUNT
+			for i = 1, DASH_COUNT do
+				local l = fovDashLines[i]
+				if i % 2 == 1 then
+					local a1 = (i - 1) * step
+					local a2 = i * step
+					l.From    = Vector2.new(center.X + math.cos(a1) * radius, center.Y + math.sin(a1) * radius)
+					l.To      = Vector2.new(center.X + math.cos(a2) * radius, center.Y + math.sin(a2) * radius)
+					l.Color   = fovColor
+					l.Visible = true
+				else
+					l.Visible = false
+				end
+			end
+		end
+	end
+
 	-- ── Vis-check raycast ─────────────────────────────────────────────────────────
 
 	local visParams = RaycastParams.new()
@@ -177,7 +220,7 @@ return function(ctx)
 	})
 	section:AddDropdown("saTarget1x", {
 		Title    = "Target Part",
-		Values   = { "HumanoidRootPart", "Head", "Torso" },
+		Values   = { "Head", "HumanoidRootPart", "UpperTorso", "Torso", "LeftUpperArm", "RightUpperArm", "LeftUpperLeg", "RightUpperLeg" },
 		Default  = "HumanoidRootPart",
 		NoSearch = true,
 		Callback = function(v) targetPart = v end,
@@ -202,6 +245,30 @@ return function(ctx)
 		Default  = false,
 		Callback = function(v) showCircle = v; if not v then fovCircle.Visible = false end end,
 	})
+	section:AddColorpicker("saFovCol1x", {
+		Title        = "FOV Color",
+		Default      = fovColor,
+		Transparency = 0,
+		Callback     = function(c)
+			fovColor = c
+			fovCircle.Color = c
+			for _, l in ipairs(fovDashLines) do l.Color = c end
+		end,
+	})
+	section:AddDropdown("saFovSty1x", {
+		Title    = "FOV Style",
+		Values   = { "Solid", "Dashed" },
+		Default  = "Solid",
+		NoSearch = true,
+		Callback = function(v)
+			fovStyle = v
+			if v == "Solid" then
+				for _, l in ipairs(fovDashLines) do l.Visible = false end
+			else
+				fovCircle.Visible = false
+			end
+		end,
+	})
 
 	-- ── Heartbeat: update closest target (safe outside __namecall) ────────────────
 
@@ -220,12 +287,13 @@ return function(ctx)
 	-- ── Update (FOV circle only; hook/heartbeat drive the actual aim) ─────────────
 
 	local function update(data)
-		if not showCircle then fovCircle.Visible = false return end
 		local cam = data.cam or Workspace.CurrentCamera
-		if not cam then fovCircle.Visible = false return end
-		fovCircle.Position = getAnchor()
-		fovCircle.Radius   = silentFov
-		fovCircle.Visible  = true
+		if not cam then
+			fovCircle.Visible = false
+			for _, l in ipairs(fovDashLines) do l.Visible = false end
+			return
+		end
+		drawFovCircle(getAnchor(), silentFov)
 	end
 
 	local function unmount()
@@ -233,6 +301,7 @@ return function(ctx)
 		closestPart = nil
 		fovCircle.Visible = false
 		pcall(function() fovCircle:Remove() end)
+		for _, l in ipairs(fovDashLines) do pcall(function() l:Remove() end) end
 		pcall(function() heartbeatConn:Disconnect() end)
 		pcall(function() charConn:Disconnect() end)
 	end

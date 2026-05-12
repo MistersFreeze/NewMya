@@ -28,6 +28,49 @@ return function(ctx)
 	fovCircle.Color        = Color3.fromRGB(230, 120, 175)
 	fovCircle.Transparency = 0.35
 
+	local fovColor  = Color3.fromRGB(230, 120, 175)
+	local fovStyle  = "Solid"
+	local DASH_COUNT = 24
+	local fovDashLines = {}
+	for i = 1, DASH_COUNT do
+		local l = Drawing.new("Line")
+		l.Visible   = false
+		l.Thickness = 1.5
+		fovDashLines[i] = l
+	end
+	fovCircle.Color = fovColor
+
+	local function drawFovCircle(center, radius)
+		if not showCircle then
+			fovCircle.Visible = false
+			for _, l in ipairs(fovDashLines) do l.Visible = false end
+			return
+		end
+		if fovStyle == "Solid" then
+			fovCircle.Position = center
+			fovCircle.Radius   = radius
+			fovCircle.Color    = fovColor
+			fovCircle.Visible  = true
+			for _, l in ipairs(fovDashLines) do l.Visible = false end
+		else
+			fovCircle.Visible = false
+			local step = (2 * math.pi) / DASH_COUNT
+			for i = 1, DASH_COUNT do
+				local l = fovDashLines[i]
+				if i % 2 == 1 then
+					local a1 = (i - 1) * step
+					local a2 = i * step
+					l.From    = Vector2.new(center.X + math.cos(a1) * radius, center.Y + math.sin(a1) * radius)
+					l.To      = Vector2.new(center.X + math.cos(a2) * radius, center.Y + math.sin(a2) * radius)
+					l.Color   = fovColor
+					l.Visible = true
+				else
+					l.Visible = false
+				end
+			end
+		end
+	end
+
 	-- ── Vis-check raycast ─────────────────────────────────────────────────────────
 
 	local visParams = RaycastParams.new()
@@ -129,7 +172,7 @@ return function(ctx)
 	})
 	section:AddDropdown("aaTarget1x", {
 		Title    = "Target Part",
-		Values   = { "Head", "HumanoidRootPart", "Torso" },
+		Values   = { "Head", "HumanoidRootPart", "UpperTorso", "Torso", "LeftUpperArm", "RightUpperArm", "LeftUpperLeg", "RightUpperLeg" },
 		Default  = "Head",
 		NoSearch = true,
 		Callback = function(v) targetPart = v end,
@@ -159,6 +202,30 @@ return function(ctx)
 		Default  = false,
 		Callback = function(v) showCircle = v; if not v then fovCircle.Visible = false end end,
 	})
+	section:AddColorpicker("aaFovCol1x", {
+		Title        = "FOV Color",
+		Default      = fovColor,
+		Transparency = 0,
+		Callback     = function(c)
+			fovColor = c
+			fovCircle.Color = c
+			for _, l in ipairs(fovDashLines) do l.Color = c end
+		end,
+	})
+	section:AddDropdown("aaFovSty1x", {
+		Title    = "FOV Style",
+		Values   = { "Solid", "Dashed" },
+		Default  = "Solid",
+		NoSearch = true,
+		Callback = function(v)
+			fovStyle = v
+			if v == "Solid" then
+				for _, l in ipairs(fovDashLines) do l.Visible = false end
+			else
+				fovCircle.Visible = false
+			end
+		end,
+	})
 
 	-- ── Update (RenderStepped) ────────────────────────────────────────────────────
 
@@ -168,13 +235,7 @@ return function(ctx)
 
 		local anchor = getAnchor(cam)
 
-		if showCircle then
-			fovCircle.Position = anchor
-			fovCircle.Radius   = aimFov
-			fovCircle.Visible  = true
-		else
-			fovCircle.Visible = false
-		end
+		drawFovCircle(anchor, aimFov)
 
 		if not aimBind.isActive() then
 			remX, remY   = 0, 0
@@ -211,6 +272,7 @@ return function(ctx)
 		aimBind.unmount()
 		fovCircle.Visible = false
 		pcall(function() fovCircle:Remove() end)
+		for _, l in ipairs(fovDashLines) do pcall(function() l:Remove() end) end
 	end
 
 	return { update = update, unmount = unmount }

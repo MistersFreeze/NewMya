@@ -10,38 +10,64 @@ return function(ctx)
 	local tipLen      = 14
 	local halfWidth   = 7
 	local color       = Color3.fromRGB(255, 130, 175)
+	local notVisColor = Color3.fromRGB(255, 165, 0)
+	local visCheck    = false
+	local arrowStyle  = "Chevron"
 
-	-- ── Pool: pre-allocated chevron pairs (2 lines each) ──────────────────────────
-	-- Indexed pool keyed by slot index, not by player.
-	-- The legacy pattern: grow pool on demand, reuse slots each frame.
+	-- ── Pool: pre-allocated per-slot drawings ─────────────────────────────────────
 
 	local MAX_TARGETS = 20
-	local pool        = {}  -- pool[i] = { l1, l2 }
+	local pool = {}
+
+	local function newSlot()
+		local function newLine()
+			local l = Drawing.new("Line")
+			l.Visible   = false
+			l.Color     = color
+			l.Thickness = 2
+			return l
+		end
+		local tri = Drawing.new("Triangle")
+		tri.Visible   = false
+		tri.Filled    = true
+		tri.Color     = color
+		tri.Thickness = 1
+
+		local dot = Drawing.new("Circle")
+		dot.Visible   = false
+		dot.Filled    = true
+		dot.Color     = color
+		dot.Radius    = 5
+		dot.NumSides  = 12
+		dot.Thickness = 1
+
+		return { l1 = newLine(), l2 = newLine(), l3 = newLine(), tri = tri, dot = dot }
+	end
 
 	local function ensurePool(n)
 		while #pool < n do
-			local l1 = Drawing.new("Line")
-			l1.Visible   = false
-			l1.Color     = color
-			l1.Thickness = 2
-			local l2 = Drawing.new("Line")
-			l2.Visible   = false
-			l2.Color     = color
-			l2.Thickness = 2
-			pool[#pool + 1] = { l1 = l1, l2 = l2 }
+			pool[#pool + 1] = newSlot()
 		end
 	end
 
-	local function hideSlot(i)
-		local p = pool[i]
-		if p then
-			p.l1.Visible = false
-			p.l2.Visible = false
-		end
+	local function hideSlot(s)
+		s.l1.Visible  = false
+		s.l2.Visible  = false
+		s.l3.Visible  = false
+		s.tri.Visible = false
+		s.dot.Visible = false
 	end
 
 	local function hideAll()
-		for i = 1, #pool do hideSlot(i) end
+		for _, s in ipairs(pool) do hideSlot(s) end
+	end
+
+	local function applyColor(s, c)
+		s.l1.Color  = c
+		s.l2.Color  = c
+		s.l3.Color  = c
+		s.tri.Color = c
+		s.dot.Color = c
 	end
 
 	-- ── UI ────────────────────────────────────────────────────────────────────────
@@ -57,6 +83,13 @@ return function(ctx)
 			if not v then hideAll() end
 		end,
 	})
+	section:AddDropdown("arrStyle01x", {
+		Title    = "Arrow Style",
+		Values   = { "Chevron", "Arrow", "Triangle", "Line", "Diamond" },
+		Default  = "Chevron",
+		NoSearch = true,
+		Callback = function(v) arrowStyle = v end,
+	})
 	section:AddSlider("oArwOrbit1x", {
 		Title    = "Ring Radius",
 		Default  = 72,
@@ -66,7 +99,7 @@ return function(ctx)
 		Callback = function(v) orbitRadius = v end,
 	})
 	section:AddSlider("oArwSize02x", {
-		Title    = "Arrow Length",
+		Title    = "Arrow Size",
 		Default  = 14,
 		Min      = 6,
 		Max      = 40,
@@ -79,14 +112,73 @@ return function(ctx)
 		Transparency = 0,
 		Callback     = function(c)
 			color = c
-			for _, p in ipairs(pool) do
-				p.l1.Color = c
-				p.l2.Color = c
-			end
+			for _, s in ipairs(pool) do applyColor(s, c) end
 		end,
+	})
+	section:AddToggle("arrVisCk01x", {
+		Title    = "Visibility Check",
+		Default  = false,
+		Callback = function(v) visCheck = v end,
+	})
+	section:AddColorpicker("arrNVCol01x", {
+		Title        = "Hidden Color",
+		Default      = notVisColor,
+		Transparency = 0,
+		Callback     = function(c) notVisColor = c end,
 	})
 
 	-- ── Update ────────────────────────────────────────────────────────────────────
+
+	local function drawSlot(s, sx, sy, center, useColor)
+		hideSlot(s)
+		applyColor(s, useColor)
+
+		local base = Vector2.new(center.X + sx * orbitRadius,          center.Y + sy * orbitRadius)
+		local tip  = Vector2.new(center.X + sx * (orbitRadius + tipLen), center.Y + sy * (orbitRadius + tipLen))
+		local perp = Vector2.new(-sy, sx)
+		local bL   = base + perp * halfWidth
+		local bR   = base - perp * halfWidth
+
+		if arrowStyle == "Chevron" then
+			s.l1.From = bL; s.l1.To = tip; s.l1.Visible = true
+			s.l2.From = bR; s.l2.To = tip; s.l2.Visible = true
+
+		elseif arrowStyle == "Arrow" then
+			s.l1.From = bL; s.l1.To = tip; s.l1.Visible = true
+			s.l2.From = bR; s.l2.To = tip; s.l2.Visible = true
+			s.l3.From = bL; s.l3.To = bR;  s.l3.Visible = true
+
+		elseif arrowStyle == "Triangle" then
+			s.tri.PointA  = tip
+			s.tri.PointB  = bL
+			s.tri.PointC  = bR
+			s.tri.Filled  = true
+			s.tri.Color   = useColor
+			s.tri.Visible = true
+
+		elseif arrowStyle == "Line" then
+			s.l1.From    = base
+			s.l1.To      = tip
+			s.l1.Visible = true
+
+		elseif arrowStyle == "Diamond" then
+			local mid  = (base + tip) * 0.5
+			local dTip = tip
+			local dBot = base
+			local dL   = mid + perp * halfWidth
+			local dR   = mid - perp * halfWidth
+			-- Top half via triangle outline (tip -> L -> R).
+			s.tri.PointA  = dTip
+			s.tri.PointB  = dL
+			s.tri.PointC  = dR
+			s.tri.Filled  = false
+			s.tri.Color   = useColor
+			s.tri.Visible = true
+			-- Bottom half via two lines (L -> bot, R -> bot).
+			s.l1.From = dL; s.l1.To = dBot; s.l1.Visible = true
+			s.l2.From = dR; s.l2.To = dBot; s.l2.Visible = true
+		end
+	end
 
 	local function update(data)
 		if not enabled then hideAll() return end
@@ -97,7 +189,6 @@ return function(ctx)
 		local camCF  = cam.CFrame
 		local center = data.screenCenter
 
-		-- Collect off-screen candidates sorted by distance (closest first).
 		local off = {}
 		for _, e in ipairs(data.players) do
 			if isSameTeam(e.player) then continue end
@@ -109,45 +200,36 @@ return function(ctx)
 		local n = math.min(#off, MAX_TARGETS)
 		ensurePool(n)
 
-		-- Hide unused slots.
-		for i = n + 1, #pool do hideSlot(i) end
+		for i = n + 1, #pool do hideSlot(pool[i]) end
 		if n == 0 then return end
 
 		for i = 1, n do
-			local e   = off[i]
-			-- Camera-local direction — robust for any target position including behind camera.
-			local ld  = camCF:VectorToObjectSpace(e.rootPos - camCF.Position)
-			-- Camera: X=right, Y=up, Z=backward. Screen: X=right, Y=down.
-			local sx  = ld.X
-			local sy  = -ld.Y
-			if ld.Z >= 0 then sx, sy = -sx, -sy end  -- flip when behind camera
-
+			local e  = off[i]
+			local ld = camCF:VectorToObjectSpace(e.rootPos - camCF.Position)
+			local sx = ld.X
+			local sy = -ld.Y
+			if ld.Z >= 0 then sx, sy = -sx, -sy end
 			local mag = math.sqrt(sx * sx + sy * sy)
 			if mag < 0.001 then sx, sy = 1, 0 else sx, sy = sx / mag, sy / mag end
 
-			-- Chevron: base at ring edge, tip beyond ring.
-			local base = Vector2.new(center.X + sx * orbitRadius,         center.Y + sy * orbitRadius)
-			local tip  = Vector2.new(center.X + sx * (orbitRadius + tipLen), center.Y + sy * (orbitRadius + tipLen))
-			local perp = Vector2.new(-sy, sx)
+			local useColor = color
+			if visCheck then
+				useColor = (e.visible ~= false) and color or notVisColor
+			end
 
-			local p = pool[i]
-			p.l1.From    = base + perp * halfWidth
-			p.l1.To      = tip
-			p.l1.Color   = color
-			p.l1.Visible = true
-			p.l2.From    = base - perp * halfWidth
-			p.l2.To      = tip
-			p.l2.Color   = color
-			p.l2.Visible = true
+			drawSlot(pool[i], sx, sy, center, useColor)
 		end
 	end
 
 	-- ── Cleanup ───────────────────────────────────────────────────────────────────
 
 	local function unmount()
-		for _, p in ipairs(pool) do
-			pcall(function() p.l1:Remove() end)
-			pcall(function() p.l2:Remove() end)
+		for _, s in ipairs(pool) do
+			pcall(function() s.l1:Remove() end)
+			pcall(function() s.l2:Remove() end)
+			pcall(function() s.l3:Remove() end)
+			pcall(function() s.tri:Remove() end)
+			pcall(function() s.dot:Remove() end)
 		end
 		pool = {}
 	end

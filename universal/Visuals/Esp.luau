@@ -13,6 +13,8 @@ return function(ctx)
 	local showHealth = true
 	local showDist   = true
 	local fillColor  = Color3.fromRGB(255, 100, 150)
+	local visCheck    = false
+	local notVisColor = Color3.fromRGB(255, 165, 0)
 
 	-- ── GUI container (Highlights need a parent in the DataModel) ─────────────────
 
@@ -230,8 +232,24 @@ return function(ctx)
 			end
 		end,
 	})
+	section:AddToggle("espVisCk01x", {
+		Title    = "Visibility Check",
+		Default  = false,
+		Callback = function(v) visCheck = v end,
+	})
+	section:AddColorpicker("espNVCol01x", {
+		Title        = "Hidden Color",
+		Default      = notVisColor,
+		Transparency = 0,
+		Callback     = function(c) notVisColor = c end,
+	})
 
 	-- ── Per-frame update ──────────────────────────────────────────────────────────
+
+	local function effectiveColor(entryVisible)
+		if not visCheck then return fillColor end
+		return (entryVisible ~= false) and fillColor or notVisColor
+	end
 
 	local function update(data)
 		local cam = data.cam or Workspace.CurrentCamera
@@ -263,9 +281,14 @@ return function(ctx)
 				e.hrp  = char and char:FindFirstChild("HumanoidRootPart")
 				pcall(function() e.hl.Adornee = char end)
 			end
+			if char and not e.head then e.head = char:FindFirstChild("Head") end
+			if char and not e.hrp  then e.hrp  = char:FindFirstChild("HumanoidRootPart") end
+
+			local curColor = effectiveColor(entry.visible)
 
 			-- Chams: enable Highlight, hide box drawings.
-			e.hl.Enabled = (style == "Chams")
+			e.hl.Enabled   = (style == "Chams")
+			e.hl.FillColor = curColor
 
 			-- Compute bounding box screen coords when any style or health bar needs them.
 			local boxOk   = false
@@ -291,7 +314,7 @@ return function(ctx)
 			if style == "Box" and boxOk then
 				e.sq.Position = topLeft
 				e.sq.Size     = Vector2.new(boxW, boxH)
-				e.sq.Color    = fillColor
+				e.sq.Color    = curColor
 				e.sq.Visible  = true
 				for _, l in ipairs(e.cl) do l.Visible = false end
 			-- Corners style.
@@ -314,7 +337,7 @@ return function(ctx)
 				-- Bottom-right
 				cl[7].From = Vector2.new(x2, y2); cl[7].To = Vector2.new(x2 - cw, y2)
 				cl[8].From = Vector2.new(x2, y2); cl[8].To = Vector2.new(x2, y2 - ch)
-				for i = 1, 8 do cl[i].Color = fillColor; cl[i].Visible = true end
+				for i = 1, 8 do cl[i].Color = curColor; cl[i].Visible = true end
 			else
 				e.sq.Visible = false
 				for _, l in ipairs(e.cl) do l.Visible = false end
@@ -345,7 +368,7 @@ return function(ctx)
 					local disp = player.DisplayName
 					e.nameTxt.Text     = (typeof(disp) == "string" and disp ~= "") and disp or player.Name
 					e.nameTxt.Position = Vector2.new(hv.X, hv.Y)
-					e.nameTxt.Color    = fillColor
+					e.nameTxt.Color    = curColor
 					e.nameTxt.Visible  = true
 				else
 					e.nameTxt.Visible = false

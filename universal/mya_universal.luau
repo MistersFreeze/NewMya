@@ -100,6 +100,15 @@ return function(BASE_URL, config)
 
 	local teamCheck = false
 
+	local visParams = RaycastParams.new()
+	visParams.FilterType  = Enum.RaycastFilterType.Exclude
+	visParams.IgnoreWater = true
+	local function updateSharedVisFilter()
+		local c = localPlayer.Character
+		visParams.FilterDescendantsInstances = c and { c } or {}
+	end
+	updateSharedVisFilter()
+
 	-- ── Module loader ─────────────────────────────────────────────────────────────
 
 	local function fetchModule(suffix)
@@ -220,6 +229,10 @@ return function(BASE_URL, config)
 		return pc
 	end
 
+	connections[#connections + 1] = localPlayer.CharacterAdded:Connect(function()
+		task.defer(updateSharedVisFilter)
+	end)
+
 	connections[#connections + 1] = Players.PlayerRemoving:Connect(function(p)
 		playerCache[p] = nil
 		for _, mod in ipairs(modules) do
@@ -252,6 +265,15 @@ return function(BASE_URL, config)
 			local depth   = rv.Z
 			local onScr   = rin and depth > 0
 
+			local entryVisible = true
+			if onScr then
+				local camPos = cam.CFrame.Position
+				local ok, ray = pcall(Workspace.Raycast, Workspace, camPos, rootPos - camPos, visParams)
+				if ok and ray and ray.Instance then
+					entryVisible = ray.Instance:IsDescendantOf(pc.char)
+				end
+			end
+
 			entries[#entries + 1] = {
 				player   = player,
 				char     = pc.char,
@@ -260,6 +282,7 @@ return function(BASE_URL, config)
 				rootSp   = Vector2.new(rv.X, rv.Y),
 				depth    = depth,
 				onScreen = onScr,
+				visible  = entryVisible,
 				dist     = myPos and (myPos - rootPos).Magnitude or 0,
 				hpPct    = (function()
 					local hp  = hum.Health

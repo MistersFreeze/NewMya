@@ -7,6 +7,8 @@ return function(ctx)
 	local enabled = false
 	local origin  = "Bottom"
 	local color   = Color3.fromRGB(255, 100, 150)
+	local visCheck    = false
+	local notVisColor = Color3.fromRGB(255, 165, 0)
 
 	-- ── Drawing pool ──────────────────────────────────────────────────────────────
 
@@ -58,6 +60,17 @@ return function(ctx)
 			for _, line in pairs(pool) do pcall(function() line.Color = c end) end
 		end,
 	})
+	section:AddToggle("trcVisCk01x", {
+		Title    = "Visibility Check",
+		Default  = false,
+		Callback = function(v) visCheck = v end,
+	})
+	section:AddColorpicker("trcNVCol1x", {
+		Title        = "Hidden Color",
+		Default      = notVisColor,
+		Transparency = 0,
+		Callback     = function(c) notVisColor = c end,
+	})
 
 	-- ── Update ────────────────────────────────────────────────────────────────────
 
@@ -87,7 +100,7 @@ return function(ctx)
 			end
 			line.From    = fromPos
 			line.To      = e.rootSp
-			line.Color   = color
+			line.Color   = (visCheck and (e.visible == false)) and notVisColor or color
 			line.Visible = true
 		end
 
