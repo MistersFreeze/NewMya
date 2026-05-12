@@ -55,9 +55,24 @@ return function(BASE_URL, config)
 	end
 	InterfaceManager:SetFolder("MyaUniversal")
 	SaveManager:SetFolder("MyaUniversal/Cfg")
+
+	-- Patch the options file on disk BEFORE LoadSettings reads it so "Delete" or
+	-- "LeftControl" can never be loaded as the minimize bind.
+	pcall(function()
+		if typeof(writefile) ~= "function" then return end
+		if typeof(makefolder) == "function" then pcall(makefolder, "MyaUniversal") end
+		local optPath = "MyaUniversal/options.json"
+		local opts = {}
+		if typeof(isfile) == "function" and isfile(optPath) and typeof(readfile) == "function" then
+			local ok, t = pcall(function() return HttpService:JSONDecode(readfile(optPath)) end)
+			if ok and typeof(t) == "table" then opts = t end
+		end
+		opts.MenuKeybind = "RightShift"
+		writefile(optPath, HttpService:JSONEncode(opts))
+	end)
+
 	InterfaceManager:LoadSettings()
 	local ifacePre = InterfaceManager.Settings
-	-- Always override whatever was saved — RightShift is the only allowed bind.
 	ifacePre.MenuKeybind = "RightShift"
 
 	-- ── Window layout persistence ─────────────────────────────────────────────────
