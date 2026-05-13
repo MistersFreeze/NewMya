@@ -140,8 +140,8 @@ return function(ctx)
 			if input.UserInputType ~= Enum.UserInputType.MouseMovement then return end
 			local mouse = UserInputService:GetMouseLocation()
 			local delta = mouse - dragMouseStart
-			local vp    = Workspace.CurrentCamera and Workspace.CurrentCamera.ViewportSize
-				or Vector2.new(1920, 1080)
+			local wc = Workspace.CurrentCamera
+			local vp = (wc and wc.ViewportSize) or Vector2.new(1920, 1080)
 			posX = math.clamp(math.floor(dragPosStart.X + delta.X), 0, vp.X - 20)
 			posY = math.clamp(math.floor(dragPosStart.Y + delta.Y), 0, vp.Y - 20)
 			frame.Position = UDim2.fromOffset(posX, posY)

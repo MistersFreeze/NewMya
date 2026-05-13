@@ -108,16 +108,21 @@ return function(ctx)
 		local now = os.clock()
 		if now - pingClock < 1 then return end
 		pingClock = now
-		local ok, val = pcall(function()
+		-- Primary: LocalPlayer:GetNetworkPing() — modern API, returns seconds → convert to ms.
+		local ok0, v0 = pcall(function() return localPlayer:GetNetworkPing() end)
+		if ok0 and type(v0) == "number" and v0 >= 0 then pingDisplay = math.floor(v0 * 1000) return end
+		-- Fallback 1: Stats.Network path (deprecated but still works on some games).
+		local ok1, v1 = pcall(function()
 			return game:GetService("Stats").Network.ServerStatsItem["Data Ping"].Value
 		end)
-		if ok and type(val) == "number" and val >= 0 then pingDisplay = math.floor(val) return end
-		local ok2, val2 = pcall(function()
+		if ok1 and type(v1) == "number" and v1 >= 0 then pingDisplay = math.floor(v1) return end
+		-- Fallback 2: scan Stats descendants for any StatsItem with "ping" in the name.
+		local ok2, v2 = pcall(function()
 			for _, d in ipairs(game:GetService("Stats"):GetDescendants()) do
 				if d:IsA("StatsItem") and d.Name:lower():find("ping") then return d.Value end
 			end
 		end)
-		if ok2 and type(val2) == "number" and val2 >= 0 then pingDisplay = math.floor(val2) end
+		if ok2 and type(v2) == "number" and v2 >= 0 then pingDisplay = math.floor(v2) end
 	end
 
 	-- ── GUI ───────────────────────────────────────────────────────────────────────
@@ -193,8 +198,8 @@ return function(ctx)
 			if input.UserInputType ~= Enum.UserInputType.MouseMovement then return end
 			local mouse = UserInputService:GetMouseLocation()
 			local delta = mouse - dragMouseStart
-			local vp    = Workspace.CurrentCamera and Workspace.CurrentCamera.ViewportSize
-				or Vector2.new(1920, 1080)
+			local wc = Workspace.CurrentCamera
+			local vp = (wc and wc.ViewportSize) or Vector2.new(1920, 1080)
 			posX = math.clamp(math.floor(dragPosStart.X + delta.X), 0, vp.X - 20)
 			posY = math.clamp(math.floor(dragPosStart.Y + delta.Y), 0, vp.Y - 20)
 			frame.Position = UDim2.fromOffset(posX, posY)
