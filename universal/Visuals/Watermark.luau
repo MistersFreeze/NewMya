@@ -210,25 +210,17 @@ return function(ctx)
 
 	-- ── Update ────────────────────────────────────────────────────────────────────
 
-	local lastIsRGB = false
-
 	local function update(_data)
 		if not enabled or not label then return end
 
 		tickFPS()
 		refreshPing()
 
-		-- Re-sync colors each frame only when in RGB mode; otherwise sync on theme change
-		-- (ThemeSync.SetTheme hook handles non-RGB updates automatically via task.defer)
-		local isRGB = themeSync and themeSync.isRGB() or false
-		if isRGB ~= lastIsRGB then
-			lastIsRGB = isRGB
-		end
-		if isRGB then
-			-- RGB cycles every frame; pull fresh accent each update
-			if themeSync then themeSync.update() end
-			syncTheme()
-		end
+		-- Pull latest colors from ThemeSync cache every frame.
+		-- For RGB, also tell ThemeSync to recompute (it cycles each frame).
+		-- For all other themes, syncTheme() is a cheap 3-field table read.
+		if themeSync and themeSync.isRGB() then themeSync.update() end
+		syncTheme()
 
 		local ha  = hex(C_ACCENT)
 		local ht  = hex(C_TEXT)
@@ -252,16 +244,6 @@ return function(ctx)
 
 		if frame       then frame.BackgroundColor3 = C_ACCENT end
 		if frameStroke then frameStroke.Color      = C_ACCENT end
-	end
-
-	-- Re-sync when theme changes (ThemeSync hook fires syncTheme via task.defer)
-	-- We patch our local syncTheme into the chain by listening to the shared update.
-	if themeSync then
-		local origUpdate = themeSync.update
-		themeSync.update = function()
-			origUpdate()
-			syncTheme()
-		end
 	end
 
 	-- ── UI section ────────────────────────────────────────────────────────────────
