@@ -73,9 +73,76 @@ local esp = {
     nameColor       = Color3.fromRGB(255, 255, 255),
     distColor       = Color3.fromRGB(255, 255, 255),
     maxDist         = 1000,
+    vehicles        = false,
+    vehicleDist     = 1000,
+    graves          = false,
+    graveDist       = 1000,
 }
 
+local _entityESPs = {} -- { [Instance] = { drawings = {}, conn = nil } }
+
 -- ─── Drawing helpers ─────────────────────────────────────────────────────────
+
+local function removeEntityESP(obj)
+    local entry = _entityESPs[obj]
+    if not entry then return end
+    if entry.conn then entry.conn:Disconnect() end
+    for _, d in pairs(entry.drawings) do
+        d.Visible = false
+        d:Remove()
+    end
+    _entityESPs[obj] = nil
+end
+
+local function addEntityESP(obj, text, color, distKey, enabledKey)
+    removeEntityESP(obj)
+
+    local d = {
+        text = Drawing.new("Text"),
+    }
+    d.text.Size         = 16
+    d.text.Center       = true
+    d.text.Outline      = true
+    d.text.Color        = color
+    d.text.Visible      = false
+
+    local entry = { drawings = d, conn = nil }
+    _entityESPs[obj] = entry
+
+    entry.conn = RunService.RenderStepped:Connect(function()
+        if not esp[enabledKey] then
+            d.text.Visible = false
+            return
+        end
+
+        if not obj:IsDescendantOf(workspace) then
+            removeEntityESP(obj)
+            return
+        end
+
+        local pos3d = obj:IsA("Model") and (obj.PrimaryPart and obj.PrimaryPart.Position or obj:GetPivot().Position) or (obj:IsA("BasePart") and obj.Position)
+        if not pos3d then
+            d.text.Visible = false
+            return
+        end
+
+        local dist = (pos3d - CurrentCamera.CFrame.Position).Magnitude
+        if dist > esp[distKey] then
+            d.text.Visible = false
+            return
+        end
+
+        local pos, onScreen = CurrentCamera:WorldToViewportPoint(pos3d)
+        if not onScreen then
+            d.text.Visible = false
+            return
+        end
+
+        d.text.Position = Vector2.new(pos.X, pos.Y)
+        d.text.Text     = string.format("[%s]\n%d m", text, math.floor(dist))
+        d.text.Visible  = true
+    end)
+end
 
 local function removeESP(player)
     local entry = _active.ESPs[player]
@@ -388,6 +455,36 @@ function module.mount(ctx)
         Callback = function(v) esp.maxDist = v end,
     })
 
+    local vehicleSec = espTab:AddSection("Vehicles")
+    vehicleSec:AddToggle("VehicleESP", {
+        Title    = "Enabled",
+        Default  = false,
+        Callback = function(v) esp.vehicles = v end,
+    })
+    vehicleSec:AddSlider("VehicleDist", {
+        Title    = "Max Distance",
+        Default  = 1000,
+        Min      = 100,
+        Max      = 5000,
+        Rounding = 0,
+        Callback = function(v) esp.vehicleDist = v end,
+    })
+
+    local graveSec = espTab:AddSection("Graves")
+    graveSec:AddToggle("GraveESP", {
+        Title    = "Enabled",
+        Default  = false,
+        Callback = function(v) esp.graves = v end,
+    })
+    graveSec:AddSlider("GraveDist", {
+        Title    = "Max Distance",
+        Default  = 1000,
+        Min      = 100,
+        Max      = 5000,
+        Rounding = 0,
+        Callback = function(v) esp.graveDist = v end,
+    })
+
     -- ── Config tab ───────────────────────────────────────────────────────────
 
     local cfgInfoSec = ConfigTab:AddSection("Configs")
@@ -432,6 +529,27 @@ function module.mount(ctx)
 
     setupTracking()
     print("[Mya Aftermath] Tracking system active.")
+
+    -- ─── Entity Tracking ─────────────────────────────────────────────────────
+
+    local function checkEntity(obj)
+        if not obj:IsA("Instance") then return end
+        if obj:HasTag("VEHICLE") then
+            addEntityESP(obj, "Vehicle", Color3.fromRGB(255, 200, 0), "vehicleDist", "vehicles")
+        elseif obj.Name:lower():find("grave") then
+            addEntityESP(obj, "Grave", Color3.fromRGB(200, 200, 200), "graveDist", "graves")
+        end
+    end
+
+    table.insert(_active.connections, game:GetService("CollectionService"):GetInstanceAddedSignal("VEHICLE"):Connect(checkEntity))
+    table.insert(_active.connections, game:GetService("CollectionService"):GetInstanceRemovedSignal("VEHICLE"):Connect(removeEntityESP))
+
+    table.insert(_active.connections, workspace.DescendantAdded:Connect(checkEntity))
+    table.insert(_active.connections, workspace.DescendantRemoving:Connect(removeEntityESP))
+
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        pcall(checkEntity, obj)
+    end
 
     local removingConn = Players.PlayerRemoving:Connect(removeESP)
     table.insert(_active.connections, removingConn)
@@ -495,6 +613,10 @@ function module.unmount()
     -- Remove all ESP drawings
     for player in pairs(_active.ESPs) do
         removeESP(player)
+    end
+
+    for obj in pairs(_entityESPs) do
+        removeEntityESP(obj)
     end
 
     -- Destroy Fluent window
