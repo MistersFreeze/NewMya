@@ -1,7 +1,11 @@
 return function(ctx)
-	local visualsTab  = ctx.visualsTab
-	local localPlayer = ctx.localPlayer
-	local Fluent      = ctx.Fluent
+	local visualsTab       = ctx.visualsTab
+	local localPlayer      = ctx.localPlayer
+	local Fluent           = ctx.Fluent
+	local UserInputService = ctx.UserInputService
+	local Workspace        = ctx.Workspace
+
+	local HttpService = game:GetService("HttpService")
 
 	-- ── Options ───────────────────────────────────────────────────────────────────
 
@@ -34,6 +38,28 @@ return function(ctx)
 			math.clamp(math.floor(c.R * 255), 0, 255),
 			math.clamp(math.floor(c.G * 255), 0, 255),
 			math.clamp(math.floor(c.B * 255), 0, 255))
+	end
+
+	-- ── Position (load saved or default) ──────────────────────────────────────────
+
+	local POS_FILE = "MyaUniversal/watermark_pos.json"
+	local posX, posY = 14, 14
+
+	pcall(function()
+		if typeof(isfile) == "function" and isfile(POS_FILE) and typeof(readfile) == "function" then
+			local ok, t = pcall(function() return HttpService:JSONDecode(readfile(POS_FILE)) end)
+			if ok and type(t) == "table" and type(t.x) == "number" and type(t.y) == "number" then
+				posX, posY = math.floor(t.x), math.floor(t.y)
+			end
+		end
+	end)
+
+	local function savePos()
+		pcall(function()
+			if typeof(writefile) ~= "function" then return end
+			if typeof(makefolder) == "function" then pcall(makefolder, "MyaUniversal") end
+			writefile(POS_FILE, HttpService:JSONEncode({ x = posX, y = posY }))
+		end)
 	end
 
 	-- ── Static data ───────────────────────────────────────────────────────────────
@@ -72,8 +98,7 @@ return function(ctx)
 		local dt  = now - fpsClock
 		if dt >= 0.5 then
 			fpsDisplay = math.max(1, math.floor(fpsFrames / dt))
-			fpsFrames  = 0
-			fpsClock   = now
+			fpsFrames, fpsClock = 0, now
 		end
 	end
 
@@ -96,9 +121,11 @@ return function(ctx)
 		if ok2 and type(val2) == "number" and val2 >= 0 then pingDisplay = math.floor(val2) end
 	end
 
-	-- ── GUI (ScreenGui + Frame + UICorner for rounded look) ───────────────────────
+	-- ── GUI ───────────────────────────────────────────────────────────────────────
 
 	local wmGui, frame, label, frameStroke
+	local dragConns = {}
+
 	pcall(function()
 		local guiParent = (typeof(gethui) == "function" and gethui())
 			or localPlayer:WaitForChild("PlayerGui")
@@ -116,7 +143,7 @@ return function(ctx)
 		frame.BackgroundColor3       = C_ACCENT
 		frame.BackgroundTransparency = 0.72
 		frame.BorderSizePixel        = 0
-		frame.Position               = UDim2.fromOffset(14, 14)
+		frame.Position               = UDim2.fromOffset(posX, posY)
 		frame.Parent                 = wmGui
 		pcall(function() frame.AutomaticSize = Enum.AutomaticSize.XY end)
 
@@ -125,9 +152,9 @@ return function(ctx)
 		corner.Parent       = frame
 
 		frameStroke = Instance.new("UIStroke")
-		frameStroke.Color       = C_ACCENT
+		frameStroke.Color        = C_ACCENT
 		frameStroke.Transparency = 0.4
-		frameStroke.Thickness   = 1.5
+		frameStroke.Thickness    = 1.5
 		pcall(function() frameStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border end)
 		frameStroke.Parent = frame
 
@@ -148,12 +175,44 @@ return function(ctx)
 		label.Size                   = UDim2.new(0, 200, 0, 22)
 		pcall(function() label.AutomaticSize = Enum.AutomaticSize.XY end)
 		label.Parent = frame
+
+		-- ── Drag logic ────────────────────────────────────────────────────────────
+
+		local dragging      = false
+		local dragMouseStart = Vector2.zero
+		local dragPosStart   = Vector2.zero
+
+		dragConns[1] = frame.InputBegan:Connect(function(input)
+			if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+			dragging       = true
+			dragMouseStart = UserInputService:GetMouseLocation()
+			dragPosStart   = Vector2.new(posX, posY)
+		end)
+
+		dragConns[2] = UserInputService.InputChanged:Connect(function(input)
+			if not dragging then return end
+			if input.UserInputType ~= Enum.UserInputType.MouseMovement then return end
+			local mouse = UserInputService:GetMouseLocation()
+			local delta = mouse - dragMouseStart
+			local vp    = Workspace.CurrentCamera and Workspace.CurrentCamera.ViewportSize
+				or Vector2.new(1920, 1080)
+			posX = math.clamp(math.floor(dragPosStart.X + delta.X), 0, vp.X - 20)
+			posY = math.clamp(math.floor(dragPosStart.Y + delta.Y), 0, vp.Y - 20)
+			frame.Position = UDim2.fromOffset(posX, posY)
+		end)
+
+		dragConns[3] = UserInputService.InputEnded:Connect(function(input)
+			if not dragging then return end
+			if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+			dragging = false
+			savePos()
+		end)
 	end)
 
 	-- ── Update ────────────────────────────────────────────────────────────────────
 
 	local function update(_data)
-		if not enabled or not wmGui or not label then return end
+		if not enabled or not label then return end
 
 		tickFPS()
 		refreshPing()
@@ -172,30 +231,18 @@ return function(ctx)
 			if pname == "" then pname = localPlayer.Name end
 			parts[#parts + 1] = string.format('<font color="%s">%s</font>', ht, pname)
 		end
-		if showGame then
-			parts[#parts + 1] = string.format('<font color="%s">%s</font>', hm, gameName)
-		end
-		if showExec then
-			parts[#parts + 1] = string.format('<font color="%s">%s</font>', hm, execName)
-		end
-		if showFPS then
-			parts[#parts + 1] = string.format('<font color="%s">%d FPS</font>', ht, fpsDisplay)
-		end
-		if showPing then
-			parts[#parts + 1] = string.format('<font color="%s">%d ms</font>', ht, pingDisplay)
-		end
+		if showGame  then parts[#parts+1] = string.format('<font color="%s">%s</font>', hm, gameName)       end
+		if showExec  then parts[#parts+1] = string.format('<font color="%s">%s</font>', hm, execName)       end
+		if showFPS   then parts[#parts+1] = string.format('<font color="%s">%d FPS</font>', ht, fpsDisplay) end
+		if showPing  then parts[#parts+1] = string.format('<font color="%s">%d ms</font>',  ht, pingDisplay) end
 
 		label.Text = table.concat(parts, dot)
 
-		if frame then
-			frame.BackgroundColor3 = C_ACCENT
-		end
-		if frameStroke then
-			frameStroke.Color = C_ACCENT
-		end
+		if frame        then frame.BackgroundColor3 = C_ACCENT end
+		if frameStroke  then frameStroke.Color      = C_ACCENT end
 	end
 
-	-- ── UI (added regardless of ScreenGui success) ────────────────────────────────
+	-- ── UI section ────────────────────────────────────────────────────────────────
 
 	local section = visualsTab:AddSection("Watermark")
 
@@ -208,35 +255,16 @@ return function(ctx)
 			if wmGui then wmGui.Enabled = v end
 		end,
 	})
-	section:AddToggle("wmUser001x", {
-		Title    = "Username",
-		Default  = true,
-		Callback = function(v) showUser = v end,
-	})
-	section:AddToggle("wmGame001x", {
-		Title    = "Game Name",
-		Default  = true,
-		Callback = function(v) showGame = v end,
-	})
-	section:AddToggle("wmExec01x", {
-		Title    = "Injector Name",
-		Default  = false,
-		Callback = function(v) showExec = v end,
-	})
-	section:AddToggle("wmFPS0001x", {
-		Title    = "FPS",
-		Default  = true,
-		Callback = function(v) showFPS = v end,
-	})
-	section:AddToggle("wmPing01x", {
-		Title    = "Ping",
-		Default  = true,
-		Callback = function(v) showPing = v end,
-	})
+	section:AddToggle("wmUser001x",  { Title = "Username",      Default = true,  Callback = function(v) showUser = v end })
+	section:AddToggle("wmGame001x",  { Title = "Game Name",     Default = true,  Callback = function(v) showGame = v end })
+	section:AddToggle("wmExec01x",   { Title = "Injector Name", Default = false, Callback = function(v) showExec = v end })
+	section:AddToggle("wmFPS0001x",  { Title = "FPS",           Default = true,  Callback = function(v) showFPS  = v end })
+	section:AddToggle("wmPing01x",   { Title = "Ping",          Default = true,  Callback = function(v) showPing = v end })
 
 	-- ── Cleanup ───────────────────────────────────────────────────────────────────
 
 	local function unmount()
+		for _, c in ipairs(dragConns) do pcall(function() c:Disconnect() end) end
 		if wmGui then pcall(function() wmGui:Destroy() end) end
 	end
 
