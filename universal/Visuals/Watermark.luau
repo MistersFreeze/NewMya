@@ -12,7 +12,7 @@ return function(ctx)
 	local showFPS  = true
 	local showPing = true
 
-	-- ── Theme colors (live sync from Fluent) ──────────────────────────────────────
+	-- ── Theme colors ──────────────────────────────────────────────────────────────
 
 	local C_ACCENT = Color3.fromRGB(245, 92, 177)
 	local C_TEXT   = Color3.fromRGB(245, 245, 250)
@@ -22,9 +22,9 @@ return function(ctx)
 		pcall(function()
 			if not (Fluent and Fluent.Colors) then return end
 			local fc = Fluent.Colors
-			C_ACCENT = fc.Accent   or fc.Toggle or C_ACCENT
-			C_TEXT   = fc.Text     or C_TEXT
-			C_MUTED  = fc.SubText  or C_MUTED
+			C_ACCENT = fc.Accent  or fc.Toggle or C_ACCENT
+			C_TEXT   = fc.Text    or C_TEXT
+			C_MUTED  = fc.SubText or C_MUTED
 		end)
 	end
 	syncTheme()
@@ -60,7 +60,7 @@ return function(ctx)
 		gameName = #raw > 26 and raw:sub(1, 24) .. "…" or raw
 	end)
 
-	-- ── FPS tracker ───────────────────────────────────────────────────────────────
+	-- ── FPS & Ping ────────────────────────────────────────────────────────────────
 
 	local fpsDisplay = 60
 	local fpsClock   = os.clock()
@@ -77,110 +77,88 @@ return function(ctx)
 		end
 	end
 
-	-- ── Ping tracker (multiple fallbacks) ────────────────────────────────────────
-
 	local pingDisplay = 0
-	local pingClock   = os.clock() - 2  -- fire immediately on first update
+	local pingClock   = os.clock() - 2
 
 	local function refreshPing()
 		local now = os.clock()
 		if now - pingClock < 1 then return end
 		pingClock = now
-
-		-- Attempt 1: Stats.Network.ServerStatsItem
 		local ok, val = pcall(function()
 			return game:GetService("Stats").Network.ServerStatsItem["Data Ping"].Value
 		end)
-		if ok and type(val) == "number" and val >= 0 then
-			pingDisplay = math.floor(val) return
-		end
-
-		-- Attempt 2: walk Stats descendants for any "ping" named StatsItem
+		if ok and type(val) == "number" and val >= 0 then pingDisplay = math.floor(val) return end
 		local ok2, val2 = pcall(function()
 			for _, d in ipairs(game:GetService("Stats"):GetDescendants()) do
-				if d:IsA("StatsItem") and d.Name:lower():find("ping") then
-					return d.Value
-				end
+				if d:IsA("StatsItem") and d.Name:lower():find("ping") then return d.Value end
 			end
 		end)
-		if ok2 and type(val2) == "number" and val2 >= 0 then
-			pingDisplay = math.floor(val2) return
-		end
-
-		-- Attempt 3: Players network info (some executors expose this)
-		local ok3, val3 = pcall(function()
-			return game:GetService("Players").LocalPlayer:GetNetworkPing() * 1000
-		end)
-		if ok3 and type(val3) == "number" and val3 >= 0 then
-			pingDisplay = math.floor(val3)
-		end
+		if ok2 and type(val2) == "number" and val2 >= 0 then pingDisplay = math.floor(val2) end
 	end
 
-	-- ── GUI setup (ScreenGui for rounded corners) ─────────────────────────────────
+	-- ── GUI (ScreenGui + Frame + UICorner for rounded look) ───────────────────────
 
-	local guiParent = (typeof(gethui) == "function" and gethui())
-		or localPlayer:WaitForChild("PlayerGui")
+	local wmGui, frame, label, frameStroke
+	pcall(function()
+		local guiParent = (typeof(gethui) == "function" and gethui())
+			or localPlayer:WaitForChild("PlayerGui")
 
-	local wmGui = Instance.new("ScreenGui")
-	wmGui.Name           = "MyaWatermark"
-	wmGui.ResetOnSpawn   = false
-	wmGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-	wmGui.DisplayOrder   = 200
-	wmGui.IgnoreGuiInset = true
-	wmGui.Enabled        = false
-	wmGui.Parent         = guiParent
+		wmGui = Instance.new("ScreenGui")
+		wmGui.Name           = "MyaWatermark"
+		wmGui.ResetOnSpawn   = false
+		wmGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+		wmGui.DisplayOrder   = 200
+		wmGui.Enabled        = false
+		pcall(function() wmGui.IgnoreGuiInset = true end)
+		wmGui.Parent = guiParent
 
-	-- Outer container (rounded, light pink transparent)
-	local frame = Instance.new("Frame")
-	frame.Name                 = "WatermarkFrame"
-	frame.BackgroundColor3     = C_ACCENT
-	frame.BackgroundTransparency = 0.72
-	frame.BorderSizePixel      = 0
-	frame.Position             = UDim2.fromOffset(14, 14)
-	frame.AutomaticSize        = Enum.AutomaticSize.XY
-	frame.Parent               = wmGui
+		frame = Instance.new("Frame")
+		frame.BackgroundColor3       = C_ACCENT
+		frame.BackgroundTransparency = 0.72
+		frame.BorderSizePixel        = 0
+		frame.Position               = UDim2.fromOffset(14, 14)
+		frame.Parent                 = wmGui
+		pcall(function() frame.AutomaticSize = Enum.AutomaticSize.XY end)
 
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 10)
-	corner.Parent       = frame
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(0, 10)
+		corner.Parent       = frame
 
-	local stroke = Instance.new("UIStroke")
-	stroke.Color               = C_ACCENT
-	stroke.Transparency        = 0.45
-	stroke.Thickness           = 1.5
-	stroke.ApplyStrokeMode     = Enum.ApplyStrokeMode.Border
-	stroke.Parent              = frame
+		frameStroke = Instance.new("UIStroke")
+		frameStroke.Color       = C_ACCENT
+		frameStroke.Transparency = 0.4
+		frameStroke.Thickness   = 1.5
+		pcall(function() frameStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border end)
+		frameStroke.Parent = frame
 
-	local pad = Instance.new("UIPadding")
-	pad.PaddingLeft   = UDim.new(0, 14)
-	pad.PaddingRight  = UDim.new(0, 14)
-	pad.PaddingTop    = UDim.new(0, 8)
-	pad.PaddingBottom = UDim.new(0, 8)
-	pad.Parent        = frame
+		local pad = Instance.new("UIPadding")
+		pad.PaddingLeft   = UDim.new(0, 14)
+		pad.PaddingRight  = UDim.new(0, 14)
+		pad.PaddingTop    = UDim.new(0, 8)
+		pad.PaddingBottom = UDim.new(0, 8)
+		pad.Parent        = frame
 
-	-- RichText label: all content in one label so UICorner/AutomaticSize work cleanly
-	local label = Instance.new("TextLabel")
-	label.Name                 = "WatermarkText"
-	label.BackgroundTransparency = 1
-	label.RichText             = true
-	label.Font                 = Enum.Font.GothamSemibold
-	label.TextSize             = 16
-	label.TextColor3           = C_TEXT
-	label.TextXAlignment       = Enum.TextXAlignment.Left
-	label.AutomaticSize        = Enum.AutomaticSize.XY
-	label.Size                 = UDim2.fromOffset(0, 0)
-	label.Parent               = frame
+		label = Instance.new("TextLabel")
+		label.BackgroundTransparency = 1
+		label.RichText               = true
+		label.Font                   = Enum.Font.GothamSemibold
+		label.TextSize               = 16
+		label.TextColor3             = C_TEXT
+		label.TextXAlignment         = Enum.TextXAlignment.Left
+		label.Size                   = UDim2.new(0, 200, 0, 22)
+		pcall(function() label.AutomaticSize = Enum.AutomaticSize.XY end)
+		label.Parent = frame
+	end)
 
 	-- ── Update ────────────────────────────────────────────────────────────────────
 
 	local function update(_data)
-		if not enabled then return end
+		if not enabled or not wmGui or not label then return end
 
 		tickFPS()
 		refreshPing()
 		syncTheme()
 
-		-- Rebuild RichText content
 		local ha  = hex(C_ACCENT)
 		local ht  = hex(C_TEXT)
 		local hm  = hex(C_MUTED)
@@ -192,8 +170,7 @@ return function(ctx)
 		if showUser then
 			local pname = localPlayer.DisplayName
 			if pname == "" then pname = localPlayer.Name end
-			parts[#parts + 1] = string.format('<font color="%s">%s</font>', ht,
-				game:GetService("HttpService"):HtmlEncode and pname or pname)
+			parts[#parts + 1] = string.format('<font color="%s">%s</font>', ht, pname)
 		end
 		if showGame then
 			parts[#parts + 1] = string.format('<font color="%s">%s</font>', hm, gameName)
@@ -210,12 +187,15 @@ return function(ctx)
 
 		label.Text = table.concat(parts, dot)
 
-		-- Sync background and stroke to live theme accent
-		frame.BackgroundColor3 = C_ACCENT
-		stroke.Color           = C_ACCENT
+		if frame then
+			frame.BackgroundColor3 = C_ACCENT
+		end
+		if frameStroke then
+			frameStroke.Color = C_ACCENT
+		end
 	end
 
-	-- ── UI ────────────────────────────────────────────────────────────────────────
+	-- ── UI (added regardless of ScreenGui success) ────────────────────────────────
 
 	local section = visualsTab:AddSection("Watermark")
 
@@ -224,8 +204,8 @@ return function(ctx)
 		Icon     = "solar/star-bold",
 		Default  = false,
 		Callback = function(v)
-			enabled         = v
-			wmGui.Enabled   = v
+			enabled = v
+			if wmGui then wmGui.Enabled = v end
 		end,
 	})
 	section:AddToggle("wmUser001x", {
@@ -257,7 +237,7 @@ return function(ctx)
 	-- ── Cleanup ───────────────────────────────────────────────────────────────────
 
 	local function unmount()
-		pcall(function() wmGui:Destroy() end)
+		if wmGui then pcall(function() wmGui:Destroy() end) end
 	end
 
 	return { update = update, unmount = unmount }
