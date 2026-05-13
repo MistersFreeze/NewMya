@@ -294,6 +294,34 @@ return function(BASE_URL, config)
 		}
 	end
 
+	-- ── ThemeSync ─────────────────────────────────────────────────────────────────
+	-- Shared theme color provider. Widgets read ctx.themeSync.getAccent() etc.
+
+	local themeSync
+	pcall(function()
+		local src = fetchModule("New_Mya/universal/lib/ThemeSync.luau")
+		if src then
+			local fn = loadstring(src, "@ThemeSync")
+			if fn then
+				local ok, ctor = pcall(fn)
+				if ok and typeof(ctor) == "function" then
+					local ok2, ts = pcall(ctor, Fluent)
+					if ok2 and typeof(ts) == "table" then themeSync = ts end
+				end
+			end
+		end
+	end)
+	-- Fallback if the module fails to load
+	if not themeSync then
+		themeSync = {
+			getAccent = function() return Color3.fromRGB(245, 92, 177) end,
+			getText   = function() return Color3.fromRGB(245, 245, 250) end,
+			getMuted  = function() return Color3.fromRGB(200, 170, 210) end,
+			isRGB     = function() return false end,
+			update    = function() end,
+		}
+	end
+
 	local ctx = {
 		visualsTab        = visualsTab,
 		combatTab         = combatTab,
@@ -304,6 +332,7 @@ return function(BASE_URL, config)
 		RunService        = RunService,
 		UserInputService  = UserInputService,
 		Workspace         = Workspace,
+		themeSync         = themeSync,
 		makeBind          = makeBind,
 		isSameTeam        = function(p)
 			if not teamCheck then return false end

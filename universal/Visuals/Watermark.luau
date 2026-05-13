@@ -4,6 +4,7 @@ return function(ctx)
 	local Fluent           = ctx.Fluent
 	local UserInputService = ctx.UserInputService
 	local Workspace        = ctx.Workspace
+	local themeSync        = ctx.themeSync
 
 	local HttpService = game:GetService("HttpService")
 
@@ -16,91 +17,20 @@ return function(ctx)
 	local showFPS  = true
 	local showPing = true
 
-	-- ── Theme color sync ──────────────────────────────────────────────────────────
-	-- Accent colors per theme name, extracted from FluentModded source.
-	-- Used as a fast fallback when GUI scanning fails.
-	-- Complete accent table — extracted from FluentModded source.
-	local THEME_ACCENTS = {
-		["Blood Red"]    = Color3.fromRGB(180, 10,  20),
-		["AMOLED"]       = Color3.fromRGB(255, 255, 255),
-		["RGB"]          = Color3.fromRGB(0,   255, 180),
-		["Neon Cyber"]   = Color3.fromRGB(57,  255, 20),
-		["Arctic Frost"] = Color3.fromRGB(100, 180, 240),
-		["Cotton Candy"] = Color3.fromRGB(255, 130, 190),
-		["Blackhole"]    = Color3.fromRGB(255, 140, 30),
-		["Cyanic"]       = Color3.fromRGB(57,  197, 187),
-		["Amber Glow"]   = Color3.fromRGB(255, 170, 40),
-		["Deep Violet"]  = Color3.fromRGB(97,  62,  167),
-		["Cyan Frost"]   = Color3.fromRGB(60,  165, 165),
-		["Ash Gray"]     = Color3.fromRGB(150, 150, 150),
-		["Charcoal"]     = Color3.fromRGB(102, 102, 102),
-		["Pearl White"]  = Color3.fromRGB(214, 214, 214),
-		["Hot Pink"]     = Color3.fromRGB(255, 120, 160),
-		["Sky Blue"]     = Color3.fromRGB(96,  205, 255),
-	}
+	-- ── Theme colors: delegated to shared ThemeSync ───────────────────────────────
 
 	local C_ACCENT = Color3.fromRGB(245, 92, 177)
 	local C_TEXT   = Color3.fromRGB(245, 245, 250)
 	local C_MUTED  = Color3.fromRGB(200, 170, 210)
-	local lastTheme = nil
-
-	local function readAccentFromGUI()
-		-- After UpdateTheme() runs, every Frame named "Indicator" inside the
-		-- Fluent GUI has BackgroundColor3 = current Accent color.
-		pcall(function()
-			if not (Fluent and Fluent.GUI) then return end
-			for _, d in ipairs(Fluent.GUI:GetDescendants()) do
-				if d.Name == "Indicator" and d:IsA("Frame") then
-					local c   = d.BackgroundColor3
-					local lum = c.R + c.G + c.B
-					if lum > 0.05 then  -- only reject near-pure-black; white accent (AMOLED=3.0) is valid
-						C_ACCENT = c
-						return
-					end
-				end
-			end
-		end)
-	end
 
 	local function syncTheme()
-		-- Method 1: Fluent.Colors (works if library exposes it)
-		local ok = false
-		pcall(function()
-			if Fluent and Fluent.Colors then
-				if Fluent.Colors.Accent  then C_ACCENT = Fluent.Colors.Accent;  ok = true end
-				if Fluent.Colors.Text    then C_TEXT   = Fluent.Colors.Text    end
-				if Fluent.Colors.SubText then C_MUTED  = Fluent.Colors.SubText end
-			end
-		end)
-		if ok then return end
-
-		-- Method 2: scan GUI for Indicator frames (reliable after UpdateTheme)
-		readAccentFromGUI()
-
-		-- Method 3: hardcoded table by theme name
-		pcall(function()
-			local name = Fluent and Fluent.Theme
-			if not name then
-				local im = Fluent and Fluent.InterfaceManager
-				if im then name = im.Settings and im.Settings.Theme end
-			end
-			if name and THEME_ACCENTS[name] then
-				C_ACCENT = THEME_ACCENTS[name]
-			end
-		end)
+		if themeSync then
+			C_ACCENT = themeSync.getAccent()
+			C_TEXT   = themeSync.getText()
+			C_MUTED  = themeSync.getMuted()
+		end
 	end
 	syncTheme()
-
-	-- Hook Fluent.SetTheme so color syncs instantly on every theme change.
-	pcall(function()
-		local orig = Fluent.SetTheme
-		Fluent.SetTheme = function(self, theme)
-			local r = orig(self, theme)
-			-- Defer one frame so UpdateTheme() finishes before we read indicator colors.
-			task.defer(syncTheme)
-			return r
-		end
-	end)
 
 	local function hex(c)
 		return string.format("#%02x%02x%02x",
@@ -247,7 +177,7 @@ return function(ctx)
 
 		-- ── Drag logic ────────────────────────────────────────────────────────────
 
-		local dragging      = false
+		local dragging       = false
 		local dragMouseStart = Vector2.zero
 		local dragPosStart   = Vector2.zero
 
@@ -280,21 +210,24 @@ return function(ctx)
 
 	-- ── Update ────────────────────────────────────────────────────────────────────
 
-	-- For RGB mode (rainbow accent), re-read every frame. For normal themes, fast-path when unchanged.
+	local lastIsRGB = false
+
 	local function update(_data)
 		if not enabled or not label then return end
 
 		tickFPS()
 		refreshPing()
 
-		local currentTheme = nil
-		pcall(function() currentTheme = Fluent and Fluent.Theme end)
-		if currentTheme ~= lastTheme then
-			lastTheme = currentTheme
-			task.defer(syncTheme)
+		-- Re-sync colors each frame only when in RGB mode; otherwise sync on theme change
+		-- (ThemeSync.SetTheme hook handles non-RGB updates automatically via task.defer)
+		local isRGB = themeSync and themeSync.isRGB() or false
+		if isRGB ~= lastIsRGB then
+			lastIsRGB = isRGB
 		end
-		if currentTheme == "RGB" then
-			readAccentFromGUI()  -- RGB cycles every frame, keep up with it
+		if isRGB then
+			-- RGB cycles every frame; pull fresh accent each update
+			if themeSync then themeSync.update() end
+			syncTheme()
 		end
 
 		local ha  = hex(C_ACCENT)
@@ -310,15 +243,25 @@ return function(ctx)
 			if pname == "" then pname = localPlayer.Name end
 			parts[#parts + 1] = string.format('<font color="%s">%s</font>', ht, pname)
 		end
-		if showGame  then parts[#parts+1] = string.format('<font color="%s">%s</font>', hm, gameName)       end
-		if showExec  then parts[#parts+1] = string.format('<font color="%s">%s</font>', hm, execName)       end
-		if showFPS   then parts[#parts+1] = string.format('<font color="%s">%d FPS</font>', ht, fpsDisplay) end
+		if showGame  then parts[#parts+1] = string.format('<font color="%s">%s</font>', hm, gameName)        end
+		if showExec  then parts[#parts+1] = string.format('<font color="%s">%s</font>', hm, execName)        end
+		if showFPS   then parts[#parts+1] = string.format('<font color="%s">%d FPS</font>', ht, fpsDisplay)  end
 		if showPing  then parts[#parts+1] = string.format('<font color="%s">%d ms</font>',  ht, pingDisplay) end
 
 		label.Text = table.concat(parts, dot)
 
-		if frame        then frame.BackgroundColor3 = C_ACCENT end
-		if frameStroke  then frameStroke.Color      = C_ACCENT end
+		if frame       then frame.BackgroundColor3 = C_ACCENT end
+		if frameStroke then frameStroke.Color      = C_ACCENT end
+	end
+
+	-- Re-sync when theme changes (ThemeSync hook fires syncTheme via task.defer)
+	-- We patch our local syncTheme into the chain by listening to the shared update.
+	if themeSync then
+		local origUpdate = themeSync.update
+		themeSync.update = function()
+			origUpdate()
+			syncTheme()
+		end
 	end
 
 	-- ── UI section ────────────────────────────────────────────────────────────────
