@@ -10,30 +10,21 @@ return function(ctx)
 	local enabled     = false
 	local color       = Color3.fromRGB(255, 100, 150)
 	local notVisColor = Color3.fromRGB(255, 165, 0)
-	local headDotOn   = false
 	local visCheck    = false
-	local HEAD_DOT_RADIUS = 5
+	local headRadius  = 8  -- fixed pixel size regardless of distance
 
-	-- ── R15 bones ─────────────────────────────────────────────────────────────────
+	-- ── Stickman bones ────────────────────────────────────────────────────────────
 	-- Format: { partA, attachA, partB, attachB }
-	--   attachA/B = RigAttachment name  → uses att.WorldPosition
-	--   attachA/B = "m:MotorName"       → uses (partA.CFrame * motor.C0).Position
-	--   attachA/B = nil                 → uses part.Position (center)
+	--   nil         → part.Position (center)
+	--   "AttName"   → Attachment.WorldPosition
+	--   "m:Motor"   → (part.CFrame * Motor6D.C0).Position
 	--
-	-- KEY RULE: the two points must be DIFFERENT joints.
-	-- Wrong: { "Head","NeckRigAtt","UpperTorso","NeckRigAtt" }  ← same world pos!
-	-- Right: { "UpperTorso","NeckRigAtt","Head",nil }           ← neck joint → head center
+	-- Stickman = spine + arms + legs only. NO collarbone / pelvis cross-bars
+	-- (those create the box/diamond shape the user doesn't want).
 
 	local R15_BONES = {
-		-- Head: neck joint (top of UpperTorso) → head center
-		{ "UpperTorso",    "NeckRigAttachment",          "Head",          nil                          },
-		-- Spine: neck joint (top of UpperTorso) → waist joint (bottom of UpperTorso)
+		-- Spine: neck joint → waist joint
 		{ "UpperTorso",    "NeckRigAttachment",           "UpperTorso",    "UpperWaistRigAttachment"    },
-		-- Collarbone: left shoulder joint ↔ right shoulder joint (both on UpperTorso)
-		{ "UpperTorso",    "LeftShoulderRigAttachment",   "UpperTorso",    "RightShoulderRigAttachment" },
-		-- Pelvis: waist joint → left hip joint, waist → right hip (both on LowerTorso)
-		{ "LowerTorso",    "UpperWaistRigAttachment",     "LowerTorso",    "LeftHipRigAttachment"       },
-		{ "LowerTorso",    "UpperWaistRigAttachment",     "LowerTorso",    "RightHipRigAttachment"      },
 		-- Left arm: shoulder → elbow → wrist → hand
 		{ "UpperTorso",    "LeftShoulderRigAttachment",   "LeftUpperArm",  "LeftElbowRigAttachment"     },
 		{ "LeftUpperArm",  "LeftElbowRigAttachment",      "LeftLowerArm",  "LeftWristRigAttachment"     },
@@ -52,20 +43,11 @@ return function(ctx)
 		{ "RightLowerLeg", "RightAnkleRigAttachment",     "RightFoot",     nil                          },
 	}
 
-	-- R6 bones: use "m:MotorName" to read the Motor6D joint position from the Torso.
-	-- This gives actual joint positions instead of part centers, eliminating the star shape.
+	-- R6: Motor6D joints for accurate positions. Spine = neck → each hip (Y-fork).
 	local R6_BONES = {
-		-- Head
-		{ "Torso", "m:Neck",           "Head",      nil              },
-		-- Upper torso outline: neck to shoulders, collarbone
-		{ "Torso", "m:Neck",           "Torso",     "m:Left Shoulder"  },
-		{ "Torso", "m:Neck",           "Torso",     "m:Right Shoulder" },
-		{ "Torso", "m:Left Shoulder",  "Torso",     "m:Right Shoulder" },
-		-- Torso sides: shoulder to hip
-		{ "Torso", "m:Left Shoulder",  "Torso",     "m:Left Hip"       },
-		{ "Torso", "m:Right Shoulder", "Torso",     "m:Right Hip"      },
-		-- Pelvis
-		{ "Torso", "m:Left Hip",       "Torso",     "m:Right Hip"      },
+		-- Spine (Y-fork: neck to left hip and right hip gives a proper body line)
+		{ "Torso", "m:Neck",           "Torso",     "m:Left Hip"       },
+		{ "Torso", "m:Neck",           "Torso",     "m:Right Hip"      },
 		-- Arms: shoulder joint → arm center
 		{ "Torso", "m:Left Shoulder",  "Left Arm",  nil                },
 		{ "Torso", "m:Right Shoulder", "Right Arm", nil                },
@@ -157,15 +139,13 @@ return function(ctx)
 		Default  = false,
 		Callback = function(v) enabled = v end,
 	})
-	section:AddToggle("sKelDot01x", {
-		Title    = "Head Dot",
-		Default  = false,
-		Callback = function(v)
-			headDotOn = v
-			if not v then
-				for _, p in pairs(pool) do pcall(function() p.dot.Visible = false end) end
-			end
-		end,
+	section:AddSlider("sKelHdSz1x", {
+		Title    = "Head Size",
+		Default  = 8,
+		Min      = 3,
+		Max      = 20,
+		Rounding = 0,
+		Callback = function(v) headRadius = v end,
 	})
 	section:AddColorpicker("sKelEsp02x", {
 		Title        = "Skeleton Color",
@@ -309,16 +289,13 @@ return function(ctx)
 				p.lines[i].Visible = false
 			end
 
-			if headDotOn then
-				local headSP = getJointSP("Head", nil)
-				if headSP then
-					p.dot.Position = headSP
-					p.dot.Radius   = HEAD_DOT_RADIUS
-					p.dot.Color    = lineColor
-					p.dot.Visible  = true
-				else
-					p.dot.Visible = false
-				end
+			-- Head circle: always shown as the stickman head, fixed pixel size.
+			local headSP = getJointSP("Head", nil)
+			if headSP then
+				p.dot.Position = headSP
+				p.dot.Radius   = headRadius  -- fixed screen-space pixels, no distance scaling
+				p.dot.Color    = lineColor
+				p.dot.Visible  = true
 			else
 				p.dot.Visible = false
 			end
