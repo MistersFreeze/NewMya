@@ -78,7 +78,7 @@ return function(ctx)
 		dot.Thickness = 1.2
 		dot.NumSides  = 16
 		dot.Color     = color
-		dot.Radius    = HEAD_DOT_RADIUS
+		dot.Radius    = headRadius
 		return { lines = lines, dot = dot, char = nil, partRefs = {}, attRefs = {}, bones = nil }
 	end
 
