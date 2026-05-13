@@ -5,38 +5,39 @@ return function(ctx)
 
 	-- ── Options ───────────────────────────────────────────────────────────────────
 
-	local enabled     = false
-	local showUser    = true
-	local showGame    = true
-	local showExec    = false
-	local showFPS     = true
-	local showPing    = true
+	local enabled  = false
+	local showUser = true
+	local showGame = true
+	local showExec = false
+	local showFPS  = true
+	local showPing = true
 
-	-- ── Theme color sync ──────────────────────────────────────────────────────────
-	-- Reads Fluent's live color palette so the watermark follows theme changes.
+	-- ── Theme colors (live sync from Fluent) ──────────────────────────────────────
 
 	local C_ACCENT = Color3.fromRGB(245, 92, 177)
-	local C_BG     = Color3.fromRGB(13,  13,  20)
 	local C_TEXT   = Color3.fromRGB(245, 245, 250)
-	local C_MUTED  = Color3.fromRGB(188, 165, 196)
-	local C_BORDER = Color3.fromRGB(66,  40,  72)
+	local C_MUTED  = Color3.fromRGB(200, 170, 210)
 
 	local function syncTheme()
 		pcall(function()
 			if not (Fluent and Fluent.Colors) then return end
 			local fc = Fluent.Colors
-			C_ACCENT = fc.Accent         or fc.Toggle         or C_ACCENT
-			C_BG     = fc.Background     or fc.Darker         or C_BG
-			C_TEXT   = fc.Text           or C_TEXT
-			C_MUTED  = fc.SubText        or C_MUTED
-			C_BORDER = fc.InElementBorder or C_BORDER
+			C_ACCENT = fc.Accent   or fc.Toggle or C_ACCENT
+			C_TEXT   = fc.Text     or C_TEXT
+			C_MUTED  = fc.SubText  or C_MUTED
 		end)
 	end
 	syncTheme()
 
+	local function hex(c)
+		return string.format("#%02x%02x%02x",
+			math.clamp(math.floor(c.R * 255), 0, 255),
+			math.clamp(math.floor(c.G * 255), 0, 255),
+			math.clamp(math.floor(c.B * 255), 0, 255))
+	end
+
 	-- ── Static data ───────────────────────────────────────────────────────────────
 
-	-- Executor name (detected once)
 	local execName = "Unknown"
 	pcall(function()
 		if typeof(getexecutorname) == "function" then
@@ -49,26 +50,23 @@ return function(ctx)
 		end
 	end)
 
-	-- Game name (async fetch)
 	local gameName = "…"
 	task.spawn(function()
 		local ok, info = pcall(function()
 			return game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId)
 		end)
-		local raw = (ok and info and info.Name) and tostring(info.Name) or (game.Name or "Roblox")
-		gameName = #raw > 24 and raw:sub(1, 22) .. "…" or raw
+		local raw = (ok and info and info.Name) and tostring(info.Name)
+			or (game.Name or "Roblox")
+		gameName = #raw > 26 and raw:sub(1, 24) .. "…" or raw
 	end)
 
-	-- ── FPS & Ping trackers ───────────────────────────────────────────────────────
+	-- ── FPS tracker ───────────────────────────────────────────────────────────────
 
 	local fpsDisplay = 60
 	local fpsClock   = os.clock()
 	local fpsFrames  = 0
 
-	local pingDisplay = 0
-	local pingClock   = os.clock()
-
-	local function updateFPS()
+	local function tickFPS()
 		fpsFrames = fpsFrames + 1
 		local now = os.clock()
 		local dt  = now - fpsClock
@@ -79,204 +77,142 @@ return function(ctx)
 		end
 	end
 
-	local function updatePing()
+	-- ── Ping tracker (multiple fallbacks) ────────────────────────────────────────
+
+	local pingDisplay = 0
+	local pingClock   = os.clock() - 2  -- fire immediately on first update
+
+	local function refreshPing()
 		local now = os.clock()
 		if now - pingClock < 1 then return end
 		pingClock = now
-		pcall(function()
-			pingDisplay = math.floor(
-				game:GetService("Stats").Network.ServerStatsItem["Data Ping"].Value
-			)
+
+		-- Attempt 1: Stats.Network.ServerStatsItem
+		local ok, val = pcall(function()
+			return game:GetService("Stats").Network.ServerStatsItem["Data Ping"].Value
 		end)
+		if ok and type(val) == "number" and val >= 0 then
+			pingDisplay = math.floor(val) return
+		end
+
+		-- Attempt 2: walk Stats descendants for any "ping" named StatsItem
+		local ok2, val2 = pcall(function()
+			for _, d in ipairs(game:GetService("Stats"):GetDescendants()) do
+				if d:IsA("StatsItem") and d.Name:lower():find("ping") then
+					return d.Value
+				end
+			end
+		end)
+		if ok2 and type(val2) == "number" and val2 >= 0 then
+			pingDisplay = math.floor(val2) return
+		end
+
+		-- Attempt 3: Players network info (some executors expose this)
+		local ok3, val3 = pcall(function()
+			return game:GetService("Players").LocalPlayer:GetNetworkPing() * 1000
+		end)
+		if ok3 and type(val3) == "number" and val3 >= 0 then
+			pingDisplay = math.floor(val3)
+		end
 	end
 
-	-- ── Drawing objects ───────────────────────────────────────────────────────────
+	-- ── GUI setup (ScreenGui for rounded corners) ─────────────────────────────────
 
-	local OUT = Color3.fromRGB(0, 0, 0)
+	local guiParent = (typeof(gethui) == "function" and gethui())
+		or localPlayer:WaitForChild("PlayerGui")
 
-	local function newText(sz, col)
-		local t = Drawing.new("Text")
-		t.Visible      = false
-		t.Size         = sz
-		t.Font         = Drawing.Fonts.UI
-		t.Color        = col
-		t.Outline      = true
-		t.OutlineColor = OUT
-		t.Center       = false
-		return t
-	end
+	local wmGui = Instance.new("ScreenGui")
+	wmGui.Name           = "MyaWatermark"
+	wmGui.ResetOnSpawn   = false
+	wmGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+	wmGui.DisplayOrder   = 200
+	wmGui.IgnoreGuiInset = true
+	wmGui.Enabled        = false
+	wmGui.Parent         = guiParent
 
-	-- Background layers
-	local shadow     = Drawing.new("Square")
-	shadow.Filled       = true
-	shadow.Color        = OUT
-	shadow.Transparency = 0.65
-	shadow.Visible      = false
+	-- Outer container (rounded, light pink transparent)
+	local frame = Instance.new("Frame")
+	frame.Name                 = "WatermarkFrame"
+	frame.BackgroundColor3     = C_ACCENT
+	frame.BackgroundTransparency = 0.72
+	frame.BorderSizePixel      = 0
+	frame.Position             = UDim2.fromOffset(14, 14)
+	frame.AutomaticSize        = Enum.AutomaticSize.XY
+	frame.Parent               = wmGui
 
-	local bg         = Drawing.new("Square")
-	bg.Filled           = true
-	bg.Transparency     = 0.12
-	bg.Visible          = false
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 10)
+	corner.Parent       = frame
 
-	local accentTop  = Drawing.new("Square")
-	accentTop.Filled    = true
-	accentTop.Transparency = 0
-	accentTop.Visible   = false
+	local stroke = Instance.new("UIStroke")
+	stroke.Color               = C_ACCENT
+	stroke.Transparency        = 0.45
+	stroke.Thickness           = 1.5
+	stroke.ApplyStrokeMode     = Enum.ApplyStrokeMode.Border
+	stroke.Parent              = frame
 
-	local leftBar    = Drawing.new("Square")
-	leftBar.Filled      = true
-	leftBar.Transparency = 0
-	leftBar.Visible     = false
+	local pad = Instance.new("UIPadding")
+	pad.PaddingLeft   = UDim.new(0, 14)
+	pad.PaddingRight  = UDim.new(0, 14)
+	pad.PaddingTop    = UDim.new(0, 8)
+	pad.PaddingBottom = UDim.new(0, 8)
+	pad.Parent        = frame
 
-	local botLine    = Drawing.new("Line")
-	botLine.Thickness   = 1
-	botLine.Transparency = 0.4
-	botLine.Visible     = false
-
-	-- Text segments: title + optional items separated by dots
-	local titleTxt  = newText(17, C_ACCENT)   titleTxt.Text = "Mya"
-	local userTxt   = newText(15, C_TEXT)
-	local gameTxt   = newText(15, C_MUTED)
-	local execTxt   = newText(15, C_MUTED)
-	local fpsTxt    = newText(15, C_TEXT)
-	local pingTxt   = newText(15, C_TEXT)
-
-	-- Separators (one per possible gap: up to 5)
-	local SEPS = {}
-	for i = 1, 5 do
-		local s = newText(15, C_BORDER)
-		s.Text = "·"
-		SEPS[i] = s
-	end
-
-	local ALL_DRAW = { shadow, bg, accentTop, leftBar, botLine,
-		titleTxt, userTxt, gameTxt, execTxt, fpsTxt, pingTxt }
-	for _, s in ipairs(SEPS) do ALL_DRAW[#ALL_DRAW + 1] = s end
-
-	local function hideAll()
-		for _, d in ipairs(ALL_DRAW) do d.Visible = false end
-	end
-
-	-- ── Layout constants ──────────────────────────────────────────────────────────
-
-	local PX       = 14    -- screen X origin
-	local PY       = 14    -- screen Y origin
-	local PAD_X    = 14    -- horizontal inner padding
-	local PAD_Y    = 9     -- vertical inner padding
-	local TOP_H    = 3     -- top accent bar height
-	local LEFT_W   = 4     -- left accent stripe width
-	local GAP      = 12    -- gap between segments
-	local TITLE_SZ = 17
-	local ITEM_SZ  = 15
-
-	-- Rough char-width estimate for Drawing.Fonts.UI
-	local function tw(str, sz) return #tostring(str) * sz * 0.55 end
+	-- RichText label: all content in one label so UICorner/AutomaticSize work cleanly
+	local label = Instance.new("TextLabel")
+	label.Name                 = "WatermarkText"
+	label.BackgroundTransparency = 1
+	label.RichText             = true
+	label.Font                 = Enum.Font.GothamSemibold
+	label.TextSize             = 16
+	label.TextColor3           = C_TEXT
+	label.TextXAlignment       = Enum.TextXAlignment.Left
+	label.AutomaticSize        = Enum.AutomaticSize.XY
+	label.Size                 = UDim2.fromOffset(0, 0)
+	label.Parent               = frame
 
 	-- ── Update ────────────────────────────────────────────────────────────────────
 
 	local function update(_data)
 		if not enabled then return end
 
+		tickFPS()
+		refreshPing()
 		syncTheme()
-		updateFPS()
-		updatePing()
 
-		-- Apply live theme colors
-		bg.Color        = C_BG
-		accentTop.Color = C_ACCENT
-		leftBar.Color   = C_ACCENT
-		botLine.Color   = C_BORDER
-		titleTxt.Color  = C_ACCENT
-		userTxt.Color   = C_TEXT
-		gameTxt.Color   = C_MUTED
-		execTxt.Color   = C_MUTED
-		fpsTxt.Color    = C_TEXT
-		pingTxt.Color   = C_TEXT
-		for _, s in ipairs(SEPS) do s.Color = C_BORDER end
+		-- Rebuild RichText content
+		local ha  = hex(C_ACCENT)
+		local ht  = hex(C_TEXT)
+		local hm  = hex(C_MUTED)
+		local dot = string.format(' <font color="%s"> · </font>', hm)
 
-		-- Build the list of active segments this frame
-		local pname = localPlayer.DisplayName
-		if pname == "" then pname = localPlayer.Name end
+		local parts = {}
+		parts[#parts + 1] = string.format('<font color="%s"><b>Mya</b></font>', ha)
 
-		local segments = {}  -- { drawObj, text, fontSize }
 		if showUser then
-			userTxt.Text = pname
-			segments[#segments + 1] = { userTxt, pname, ITEM_SZ }
+			local pname = localPlayer.DisplayName
+			if pname == "" then pname = localPlayer.Name end
+			parts[#parts + 1] = string.format('<font color="%s">%s</font>', ht,
+				game:GetService("HttpService"):HtmlEncode and pname or pname)
 		end
 		if showGame then
-			gameTxt.Text = gameName
-			segments[#segments + 1] = { gameTxt, gameName, ITEM_SZ }
+			parts[#parts + 1] = string.format('<font color="%s">%s</font>', hm, gameName)
 		end
 		if showExec then
-			execTxt.Text = execName
-			segments[#segments + 1] = { execTxt, execName, ITEM_SZ }
+			parts[#parts + 1] = string.format('<font color="%s">%s</font>', hm, execName)
 		end
 		if showFPS then
-			local fstr = fpsDisplay .. " FPS"
-			fpsTxt.Text = fstr
-			segments[#segments + 1] = { fpsTxt, fstr, ITEM_SZ }
+			parts[#parts + 1] = string.format('<font color="%s">%d FPS</font>', ht, fpsDisplay)
 		end
 		if showPing then
-			local pstr = pingDisplay .. " ms"
-			pingTxt.Text = pstr
-			segments[#segments + 1] = { pingTxt, pstr, ITEM_SZ }
+			parts[#parts + 1] = string.format('<font color="%s">%d ms</font>', ht, pingDisplay)
 		end
 
-		-- Measure total width
-		local totalContentW = tw("Mya", TITLE_SZ)
-		local sepW = tw("·", ITEM_SZ)
-		for i = 1, #segments do
-			totalContentW = totalContentW + GAP + sepW + GAP + tw(segments[i][2], ITEM_SZ)
-		end
+		label.Text = table.concat(parts, dot)
 
-		local totalW = LEFT_W + PAD_X + totalContentW + PAD_X
-		local totalH = TOP_H  + PAD_Y + TITLE_SZ + PAD_Y
-
-		-- Position background layers
-		shadow.Position   = Vector2.new(PX + 3, PY + 3)
-		shadow.Size       = Vector2.new(totalW, totalH)
-		bg.Position       = Vector2.new(PX, PY)
-		bg.Size           = Vector2.new(totalW, totalH)
-		accentTop.Position = Vector2.new(PX, PY)
-		accentTop.Size    = Vector2.new(totalW, TOP_H)
-		leftBar.Position  = Vector2.new(PX, PY + TOP_H)
-		leftBar.Size      = Vector2.new(LEFT_W, totalH - TOP_H)
-		botLine.From      = Vector2.new(PX,          PY + totalH)
-		botLine.To        = Vector2.new(PX + totalW, PY + totalH)
-
-		-- Position text segments
-		local textY = PY + TOP_H + PAD_Y
-		local cx    = PX + LEFT_W + PAD_X
-
-		titleTxt.Position = Vector2.new(cx, textY)
-		titleTxt.Visible  = true
-		cx = cx + tw("Mya", TITLE_SZ)
-
-		-- Hide all separators and item texts first, then re-show as needed
-		for _, s in ipairs(SEPS)  do s.Visible      = false end
-		userTxt.Visible  = false
-		gameTxt.Visible  = false
-		execTxt.Visible  = false
-		fpsTxt.Visible   = false
-		pingTxt.Visible  = false
-
-		for i, seg in ipairs(segments) do
-			local sep = SEPS[i]
-			cx = cx + GAP
-			sep.Position = Vector2.new(cx, textY)
-			sep.Visible  = true
-			cx = cx + sepW + GAP
-
-			seg[1].Position = Vector2.new(cx, textY)
-			seg[1].Visible  = true
-			cx = cx + tw(seg[2], ITEM_SZ)
-		end
-
-		shadow.Visible    = true
-		bg.Visible        = true
-		accentTop.Visible = true
-		leftBar.Visible   = true
-		botLine.Visible   = true
+		-- Sync background and stroke to live theme accent
+		frame.BackgroundColor3 = C_ACCENT
+		stroke.Color           = C_ACCENT
 	end
 
 	-- ── UI ────────────────────────────────────────────────────────────────────────
@@ -287,7 +223,10 @@ return function(ctx)
 		Title    = "Show Watermark",
 		Icon     = "solar/star-bold",
 		Default  = false,
-		Callback = function(v) enabled = v; if not v then hideAll() end end,
+		Callback = function(v)
+			enabled         = v
+			wmGui.Enabled   = v
+		end,
 	})
 	section:AddToggle("wmUser001x", {
 		Title    = "Username",
@@ -318,7 +257,7 @@ return function(ctx)
 	-- ── Cleanup ───────────────────────────────────────────────────────────────────
 
 	local function unmount()
-		for _, d in ipairs(ALL_DRAW) do pcall(function() d:Remove() end) end
+		pcall(function() wmGui:Destroy() end)
 	end
 
 	return { update = update, unmount = unmount }
