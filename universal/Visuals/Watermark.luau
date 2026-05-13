@@ -19,6 +19,7 @@ return function(ctx)
 	-- ── Theme color sync ──────────────────────────────────────────────────────────
 	-- Accent colors per theme name, extracted from FluentModded source.
 	-- Used as a fast fallback when GUI scanning fails.
+	-- Complete accent table — extracted from FluentModded source.
 	local THEME_ACCENTS = {
 		["Blood Red"]    = Color3.fromRGB(180, 10,  20),
 		["AMOLED"]       = Color3.fromRGB(255, 255, 255),
@@ -31,6 +32,11 @@ return function(ctx)
 		["Amber Glow"]   = Color3.fromRGB(255, 170, 40),
 		["Deep Violet"]  = Color3.fromRGB(97,  62,  167),
 		["Cyan Frost"]   = Color3.fromRGB(60,  165, 165),
+		["Ash Gray"]     = Color3.fromRGB(150, 150, 150),
+		["Charcoal"]     = Color3.fromRGB(102, 102, 102),
+		["Pearl White"]  = Color3.fromRGB(214, 214, 214),
+		["Hot Pink"]     = Color3.fromRGB(255, 120, 160),
+		["Sky Blue"]     = Color3.fromRGB(96,  205, 255),
 	}
 
 	local C_ACCENT = Color3.fromRGB(245, 92, 177)
@@ -47,7 +53,7 @@ return function(ctx)
 				if d.Name == "Indicator" and d:IsA("Frame") then
 					local c   = d.BackgroundColor3
 					local lum = c.R + c.G + c.B
-					if lum > 0.3 and lum < 2.8 then  -- not pure black or pure white
+					if lum > 0.05 then  -- only reject near-pure-black; white accent (AMOLED=3.0) is valid
 						C_ACCENT = c
 						return
 					end
