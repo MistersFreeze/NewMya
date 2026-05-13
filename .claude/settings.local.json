@@ -15,7 +15,16 @@
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
       "Bash(git push *)",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Bash(git mv *)",
+      "Bash(copy \"C:\\\\Users\\\\Lanzo\\\\Desktop\\\\New_Mya\\\\universal\\\\Combat\\\\Movement.luau\" \"C:\\\\Users\\\\Lanzo\\\\Desktop\\\\New_Mya\\\\universal\\\\Movement\\\\Movement.luau\")",
+      "Bash(mkdir -p /mnt/c/Users/Lanzo/Desktop/New_Mya/universal/Movement)",
+      "Bash(cp /mnt/c/Users/Lanzo/Desktop/New_Mya/universal/Combat/Movement.luau /mnt/c/Users/Lanzo/Desktop/New_Mya/universal/Movement/Movement.luau)",
+      "PowerShell(New-Item *)",
+      "Bash(git rm *)",
+      "Bash(Get-Content \"C:\\\\Users\\\\Lanzo\\\\Desktop\\\\New_Mya\\\\games\\\\Aftermath_112237800564065\\\\init.luau\")",
+      "Bash(Measure-Object -Line)",
+      "PowerShell(Get-Content *)"
     ]
   }
 }
