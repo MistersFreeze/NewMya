@@ -186,8 +186,14 @@ return function(ctx)
 		local dragMouseStart = Vector2.zero
 		local dragPosStart   = Vector2.zero
 
+		local function isGuiOpen()
+			local ok, v = pcall(function() return Fluent and Fluent.GUI and Fluent.GUI.Enabled end)
+			return ok and v == true
+		end
+
 		dragConns[1] = frame.InputBegan:Connect(function(input)
 			if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+			if not isGuiOpen() then return end
 			dragging       = true
 			dragMouseStart = UserInputService:GetMouseLocation()
 			dragPosStart   = Vector2.new(posX, posY)
