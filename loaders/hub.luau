@@ -45,6 +45,12 @@ return function(BASE_URL: string, config: { [string]: any })
 			local ok, res = pcall(function()
 				return game:HttpGet(url, true)
 			end)
+			-- Fallback for executors that don't support the cache argument correctly
+			if not ok or (ok and typeof(res) ~= "string") then
+				ok, res = pcall(function()
+					return game:HttpGet(url)
+				end)
+			end
 			if ok and typeof(res) == "string" and #res > 0 then
 				local clean = sanitizeSource(res)
 				if not looksLikeHtmlOrError(clean) then
@@ -78,7 +84,9 @@ return function(BASE_URL: string, config: { [string]: any })
 		local pre = genv and genv.MYA_PREFETCH_FLUENT_SRC
 		if typeof(pre) == "string" and #pre > 500 then
 			src = pre
-			genv.MYA_PREFETCH_FLUENT_SRC = nil
+			pcall(function()
+				genv.MYA_PREFETCH_FLUENT_SRC = nil
+			end)
 		else
 			src = select(1, fetchPath("New_Mya/lib/FluentModded.lua"))
 		end
@@ -86,6 +94,11 @@ return function(BASE_URL: string, config: { [string]: any })
 			local okSrc, remote = pcall(function()
 				return game:HttpGet(FLUENT_URL, true)
 			end)
+			if not okSrc or (okSrc and typeof(remote) ~= "string") then
+				okSrc, remote = pcall(function()
+					return game:HttpGet(FLUENT_URL)
+				end)
+			end
 			if okSrc and typeof(remote) == "string" and #remote > 0 then
 				src = sanitizeSource(remote)
 			end
@@ -101,7 +114,9 @@ return function(BASE_URL: string, config: { [string]: any })
 		if typeof(lib) ~= "table" or not lib.CreateWindow then
 			error("Fluent returned invalid library")
 		end
-		g.MYA_FLUENT_SINGLETON = lib
+		pcall(function()
+			g.MYA_FLUENT_SINGLETON = lib
+		end)
 		return lib
 	end
 
@@ -187,7 +202,9 @@ return function(BASE_URL: string, config: { [string]: any })
 	hideFluentGui(true)
 
 	local function recreateFluentAndManagers()
-		_G.MYA_FLUENT_SINGLETON = nil
+		pcall(function()
+			_G.MYA_FLUENT_SINGLETON = nil
+		end)
 		local fresh = getFluentSingleton()
 		Fluent = fresh
 		SaveManager = fresh.SaveManager
@@ -429,9 +446,13 @@ return function(BASE_URL: string, config: { [string]: any })
 			RunService.Heartbeat:Wait()
 		end
 		_G.MYA_FLUENT_SINGLETON = nil
+		pcall(function()
+			_G.MYA_FLUENT_SINGLETON = nil
+		end)
 		RunService.Heartbeat:Wait()
 	end
 
+	local _activeGameModule = nil
 	local function launchGameModule(): (boolean, string?)
 		local modulePath = supportedGames[game.PlaceId]
 		if typeof(modulePath) ~= "string" or #modulePath == 0 then
@@ -446,27 +467,23 @@ return function(BASE_URL: string, config: { [string]: any })
 			return false, "compile:" .. tostring(compileErr)
 		end
 
-		-- Fluent allows one active window; tear hub down first before launching another UI.
-		teardownForSecondaryUI()
-
 		local ok, runResult = pcall(chunk)
 		if not ok then
 			return false, "runtime:" .. tostring(runResult)
 		end
 
-		-- Mount-style modules (match legacy hub): `return { mount = function(ctx) ... end }`
 		if typeof(runResult) == "table" and typeof(runResult.mount) == "function" then
+			-- Module is valid and ready. Now we can clear the Hub and mount.
+			teardownForSecondaryUI()
+			
 			local okMount, mountErr = pcall(function()
+				_activeGameModule = runResult
 				runResult.mount({
-					panel = nil,
-					notify = function(...)
-						local args = { ... }
-						if #args == 1 then
-							notify(Fluent, "Mya", tostring(args[1]), 3)
-						elseif #args >= 2 then
-							local dur = if typeof(args[3]) == "number" then args[3] else 3
-							notify(Fluent, tostring(args[1]), tostring(args[2]), dur)
-						end
+					Fluent = Fluent,
+					SaveManager = SaveManager,
+					InterfaceManager = InterfaceManager,
+					notify = function(title, text, dur)
+						notify(Fluent, title, text, dur or 3)
 					end,
 					getPlaceId = function()
 						return game.PlaceId
@@ -475,12 +492,15 @@ return function(BASE_URL: string, config: { [string]: any })
 					gameScriptPath = modulePath,
 				})
 			end)
+			
 			if not okMount then
 				return false, "mount:" .. tostring(mountErr)
+			end
+			
+			return true, modulePath
+		else
+			return false, "Invalid module return (expected table with mount function)"
 		end
-	end
-
-		return true, modulePath
 	end
 
 	gameSection:AddButton({
@@ -738,11 +758,7 @@ return function(BASE_URL: string, config: { [string]: any })
 		hideFluentGui(false)
 	end)
 
-	_G.unload_new_mya = function()
-		if unloadingNow then
-			return
-		end
-		unloadingNow = true
+	pcall(function()
 		local function isMyaName(name)
 			if typeof(name) ~= "string" then
 				return false
@@ -768,6 +784,9 @@ return function(BASE_URL: string, config: { [string]: any })
 		end
 
 		local function runKnownUnloadHooks()
+			if _activeGameModule and typeof(_activeGameModule.unmount) == "function" then
+				pcall(_activeGameModule.unmount)
+			end
 			local hooks = {
 				"unload_mya",
 				"unload_mya_universal",
@@ -813,17 +832,25 @@ return function(BASE_URL: string, config: { [string]: any })
 				"aftermath_purge_residual_visuals",
 			}
 			for _, key in ipairs(explicit) do
-				_G[key] = nil
+				pcall(function()
+					_G[key] = nil
+				end)
 			end
 			for key, _ in pairs(_G) do
 				if typeof(key) == "string" then
 					local lk = string.lower(key)
 					if string.sub(key, 1, 4) == "MYA_" then
-						_G[key] = nil
+						pcall(function()
+							_G[key] = nil
+						end)
 					elseif string.find(lk, "mya", 1, true) ~= nil then
-						_G[key] = nil
+						pcall(function()
+							_G[key] = nil
+						end)
 					elseif string.sub(lk, 1, 7) == "unload_" and string.find(lk, "aftermath", 1, true) ~= nil then
-						_G[key] = nil
+						pcall(function()
+							_G[key] = nil
+						end)
 					end
 				end
 			end
@@ -853,19 +880,27 @@ return function(BASE_URL: string, config: { [string]: any })
 			pcall(function()
 				destroyMyaInstances(workspace)
 			end)
-			_G.MYA_FLUENT_SINGLETON = nil
+			pcall(function()
+				_G.MYA_FLUENT_SINGLETON = nil
+			end)
 			clearMyaGlobals()
 		end
 
-		-- Run now, then across a few frames for anything created late by async callbacks.
-		hardSweep()
-		task.defer(function()
-			for _ = 1, 8 do
-				RunService.Heartbeat:Wait()
-				hardSweep()
-			end
-		end)
-	end
+		-- Define the global hook that triggers the cleanup
+		_G.unload_new_mya = function()
+			if unloadingNow then return end
+			unloadingNow = true
+			
+			-- Run now, then across a few frames for anything created late by async callbacks.
+			hardSweep()
+			task.defer(function()
+				for _ = 1, 8 do
+					RunService.Heartbeat:Wait()
+					hardSweep()
+				end
+			end)
+		end
+	end)
 
 	notify(Fluent, "Mya Loader", "Mya Loader has been initialized", 4)
 	Window:SelectTab(1)

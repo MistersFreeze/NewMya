@@ -24,7 +24,8 @@
       "Bash(git rm *)",
       "Bash(Get-Content \"C:\\\\Users\\\\Lanzo\\\\Desktop\\\\New_Mya\\\\games\\\\Aftermath_112237800564065\\\\init.luau\")",
       "Bash(Measure-Object -Line)",
-      "PowerShell(Get-Content *)"
+      "PowerShell(Get-Content *)",
+      "Bash(git *)"
     ]
   }
 }

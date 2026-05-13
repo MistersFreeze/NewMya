@@ -1,9 +1,48 @@
 -- Aftermath ESP module for New_Mya
 -- PlaceId: 112237800564065
 
-local Players     = game:GetService("Players")
-local RunService  = game:GetService("RunService")
-local HttpService = game:GetService("HttpService")
+local Players           = game:GetService("Players")
+local RunService        = game:GetService("RunService")
+local HttpService       = game:GetService("HttpService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local function findAsset(name)
+    local rs = ReplicatedStorage:FindFirstChild(name, true)
+    if rs then return rs end
+    local rf = game:GetService("ReplicatedFirst"):FindFirstChild(name, true)
+    if rf then return rf end
+    return nil
+end
+
+local CustomCharacter = nil
+print("[Mya Aftermath] Initializing asset discovery...")
+
+-- Wait loop with feedback
+local startTime = tick()
+while not CustomCharacter do
+    CustomCharacter = findAsset("CustomCharacter")
+    if not CustomCharacter then
+        if tick() - startTime > 20 then
+            warn("[Mya Aftermath] Still waiting for 'CustomCharacter' folder. Are you sure you are in a match?")
+            startTime = tick() -- Reset warning timer
+        end
+        task.wait(2)
+    end
+end
+
+print("[Mya Aftermath] Found 'CustomCharacter' at: " .. CustomCharacter:GetFullName())
+
+local PlayerListMod = CustomCharacter:FindFirstChild("PlayerList", true)
+if not PlayerListMod then
+    print("[Mya Aftermath] Waiting for 'PlayerList' module...")
+    PlayerListMod = CustomCharacter:WaitForChild("PlayerList", 20)
+end
+
+if not PlayerListMod then
+    error("Aftermath initialization failed: 'PlayerList' module not found anywhere inside 'CustomCharacter'.")
+end
+
+local PlayerList = require(PlayerListMod)
+print("[Mya Aftermath] PlayerList required successfully.")
 
 local LocalPlayer   = Players.LocalPlayer
 local CurrentCamera = workspace.CurrentCamera
@@ -42,6 +81,7 @@ local function removeESP(player)
     local entry = _active.ESPs[player]
     if not entry then return end
     if entry.conn then entry.conn:Disconnect() end
+    if entry.respawnConn then entry.respawnConn:Disconnect() end
     for _, d in pairs(entry.drawings) do
         d.Visible = false
         d:Remove()
@@ -71,7 +111,7 @@ local function addESP(player)
     d.dist.Size         = 14
     d.dist.Visible      = false
 
-    local entry = { drawings = d, conn = nil }
+    local entry = { drawings = d, conn = nil, lastChar = nil }
     _active.ESPs[player] = entry
 
     entry.conn = RunService.RenderStepped:Connect(function()
@@ -80,8 +120,18 @@ local function addESP(player)
             return
         end
 
-        local char = player.Character
-        local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+        local char = PlayerList:GetCharacterFromPlayer(player)
+        if not char then
+            for _, dr in pairs(d) do dr.Visible = false end
+            return
+        end
+
+        local hrp = char.PrimaryPart or char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("RootPart")
+        if not hrp then
+            -- Fallback: try to find any part if PrimaryPart is missing (common during loading)
+            hrp = char:FindFirstChildWhichIsA("BasePart")
+        end
+
         if not hrp then
             for _, dr in pairs(d) do dr.Visible = false end
             return
@@ -93,8 +143,7 @@ local function addESP(player)
             return
         end
 
-        local adjusted = hrp.Position + Vector3.new(0, 1.5, 0)
-        local pos, onScreen = CurrentCamera:WorldToViewportPoint(adjusted)
+        local pos, onScreen = CurrentCamera:WorldToViewportPoint(hrp.Position)
         if not onScreen then
             for _, dr in pairs(d) do dr.Visible = false end
             return
@@ -102,7 +151,7 @@ local function addESP(player)
 
         local scale  = 1 / (pos.Z * math.tan(math.rad(CurrentCamera.FieldOfView * 0.5)) * 2) * 1000
         local width  = math.floor(4.5 * scale)
-        local height = math.floor(6 * scale)
+        local height = math.floor(6.0 * scale)
         local x      = math.floor(pos.X)
         local y      = math.floor(pos.Y)
         local bx     = math.floor(x - width * 0.5)
@@ -140,15 +189,10 @@ local function addESP(player)
     end)
 
     -- Reconnect drawings after the player respawns
-    player.CharacterAdded:Connect(function(char)
-        local hum = char:WaitForChild("Humanoid", 10)
-        if hum then
-            hum.Died:Connect(function()
-                task.wait(0.1)
-                if Players:FindFirstChild(player.Name) then
-                    addESP(player)
-                end
-            end)
+    entry.respawnConn = PlayerList:GetCharacterAddedSignal(player):Connect(function()
+        task.wait(0.5) -- Give the new character a moment to settle
+        if Players:FindFirstChild(player.Name) then
+            addESP(player)
         end
     end)
 end
@@ -363,19 +407,35 @@ function module.mount(ctx)
         InterfaceManager:SaveSettings()
     end)
 
-    -- ── Player ESP wiring ────────────────────────────────────────────────────
+    -- ─── Track existing players ──────────────────────────────────────────────
+    
+    local function setupTracking()
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer then addESP(p) end
+        end
 
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer then addESP(p) end
+        -- Try to hook PlayerList's custom signals if they exist
+        pcall(function()
+            if PlayerList and PlayerList.PlayerAdded and typeof(PlayerList.PlayerAdded.Connect) == "function" then
+                table.insert(_active.connections, PlayerList.PlayerAdded:Connect(function(p)
+                    if p ~= LocalPlayer then addESP(p) end
+                end))
+                print("[Mya Aftermath] Hooked custom PlayerList.PlayerAdded signal.")
+            else
+                table.insert(_active.connections, Players.PlayerAdded:Connect(function(p)
+                    if p ~= LocalPlayer then addESP(p) end
+                end))
+                print("[Mya Aftermath] Falling back to standard Players.PlayerAdded.")
+            end
+        end)
     end
 
-    local addedConn   = Players.PlayerAdded:Connect(function(p)
-        if p ~= LocalPlayer then addESP(p) end
-    end)
-    local removingConn = Players.PlayerRemoving:Connect(removeESP)
+    setupTracking()
+    print("[Mya Aftermath] Tracking system active.")
 
-    table.insert(_active.connections, addedConn)
+    local removingConn = Players.PlayerRemoving:Connect(removeESP)
     table.insert(_active.connections, removingConn)
+
 
     -- ── Layout save (every 10 s) ─────────────────────────────────────────────
 

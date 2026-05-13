@@ -42,6 +42,12 @@ local function get(url: string): (string?, string?)
 	local ok, res = pcall(function()
 		return game:HttpGet(url, true)
 	end)
+	-- Fallback for executors that don't support the cache argument correctly
+	if not ok or (ok and typeof(res) ~= "string") then
+		ok, res = pcall(function()
+			return game:HttpGet(url)
+		end)
+	end
 	if ok and typeof(res) == "string" then
 		return sanitizeSource(res), nil
 	end
@@ -86,7 +92,7 @@ local function runAnalytics(baseUrl: string, config: { [string]: any })
 			warn("[Mya Analytics] fetch failed: " .. tostring(err))
 			return
 		end
-		local chunk, compileErr = loadstring(src, "@New_Mya/analytics")
+		local chunk, compileErr = loadstring(src)
 		if typeof(chunk) ~= "function" then
 			warn("[Mya Analytics] compile failed: " .. tostring(compileErr))
 			return
@@ -145,18 +151,33 @@ local function boot()
 	if not configSrc then
 		error("config fetch failed: " .. tostring(configErr))
 	end
-	local configChunk, configCompileErr = loadstring(configSrc, "@New_Mya/config")
+	if #configSrc == 0 then
+		local advice = ""
+		if string.find(BASE_URL, "127.0.0.1", 1, true) or string.find(BASE_URL, "localhost", 1, true) then
+			advice = "\nTip: Potassium may not support 127.0.0.1. Try using your actual local IP (e.g. 192.168.x.x)."
+		end
+		error("config fetch returned an empty string." .. advice)
+	end
+	local configChunk, configCompileErr = loadstring(configSrc)
 	if typeof(configChunk) ~= "function" then
 		error("config failed to compile: " .. tostring(configCompileErr))
 	end
-	local config = configChunk()
-	if typeof(config) ~= "table" then
-		error("config must return a table.")
+	local okConfig, configOrErr = pcall(configChunk)
+	if not okConfig then
+		error("config runtime error: " .. tostring(configOrErr))
 	end
+	if typeof(configOrErr) ~= "table" then
+		warn("[Mya Debug] Config Source Start: " .. string.sub(configSrc, 1, 100))
+		error("config must return a table (got " .. typeof(configOrErr) .. ").")
+	end
+	local config = configOrErr
+
 	if typeof(fetchState.fluentSrc) == "string" and #fetchState.fluentSrc > 500 and not looksLikeHtml(fetchState.fluentSrc) then
 		local genv = typeof(getgenv) == "function" and getgenv()
 		if genv then
-			genv.MYA_PREFETCH_FLUENT_SRC = sanitizeSource(fetchState.fluentSrc)
+			pcall(function()
+				genv.MYA_PREFETCH_FLUENT_SRC = sanitizeSource(fetchState.fluentSrc)
+			end)
 		end
 	end
 	runAnalytics(BASE_URL, config)
@@ -165,7 +186,7 @@ local function boot()
 	if not hubSrc then
 		error("hub fetch failed: " .. tostring(hubErr))
 	end
-	local hubChunk, hubCompileErr = loadstring(hubSrc, "@New_Mya/hub")
+	local hubChunk, hubCompileErr = loadstring(hubSrc)
 	if typeof(hubChunk) ~= "function" then
 		error("hub failed to compile: " .. tostring(hubCompileErr))
 	end
@@ -181,7 +202,9 @@ local function boot()
 			_G.unload_new_mya()
 		end
 	end)
-	_G.MYA_FLUENT_SINGLETON = nil
+	pcall(function()
+		_G.MYA_FLUENT_SINGLETON = nil
+	end)
 
 	hubMain(BASE_URL, config)
 end
