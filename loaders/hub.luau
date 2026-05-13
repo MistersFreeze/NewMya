@@ -120,6 +120,21 @@ return function(BASE_URL: string, config: { [string]: any })
 		return lib
 	end
 
+	local function runAnalytics(logType, extra)
+		local webhook = config.ANON_ANALYTICS_WEBHOOK_URL
+		if typeof(webhook) ~= "string" or #webhook < 10 then return end
+		
+		task.spawn(pcall, function()
+			local src = fetchPath("New_Mya/lib/analytics.luau")
+			if not src then return end
+			local chunk = loadstring(src, "@Analytics")
+			if typeof(chunk) ~= "function" then return end
+			local analytics = chunk()
+			if typeof(analytics) ~= "table" or typeof(analytics.sendLog) ~= "function" then return end
+			analytics.sendLog(webhook, logType, extra)
+		end)
+	end
+
 	local player = Players.LocalPlayer
 	local playerName = if player then player.DisplayName else "User"
 
@@ -223,7 +238,6 @@ return function(BASE_URL: string, config: { [string]: any })
 
 	local Window = Fluent:CreateWindow(windowOpts)
 	if not Window or typeof(Window.AddTab) ~= "function" then
-		warn("[Mya Loader] Fluent CreateWindow failed; resetting library and retrying once.")
 		recreateFluentAndManagers()
 		ifacePre = InterfaceManager.Settings
 		ifaceOptionsExist = typeof(isfile) == "function" and isfile("MyaHub/options.json")
@@ -497,6 +511,7 @@ return function(BASE_URL: string, config: { [string]: any })
 				return false, "mount:" .. tostring(mountErr)
 			end
 			
+			runAnalytics("GameModuleLaunch", modulePath)
 			return true, modulePath
 		else
 			return false, "Invalid module return (expected table with mount function)"
@@ -525,7 +540,6 @@ return function(BASE_URL: string, config: { [string]: any })
 		teardownForSecondaryUI()
 		local fLib = getFluentSingleton()
 		if typeof(fLib) ~= "table" or typeof(fLib.CreateWindow) ~= "function" then
-			warn("[Mya Universal] Fallback failed: Fluent library unavailable.")
 			return
 		end
 		local fSave = fLib.SaveManager
@@ -545,7 +559,6 @@ return function(BASE_URL: string, config: { [string]: any })
 			Search = false,
 		})
 		if not uWindow or typeof(uWindow.AddTab) ~= "function" then
-			warn("[Mya Universal] Fallback failed: CreateWindow returned nil.")
 			return
 		end
 
@@ -903,5 +916,6 @@ return function(BASE_URL: string, config: { [string]: any })
 	end)
 
 	notify(Fluent, "Mya Loader", "Mya Loader has been initialized", 4)
+	runAnalytics("HubBoot", "New_Mya/loaders/hub.luau")
 	Window:SelectTab(1)
 end

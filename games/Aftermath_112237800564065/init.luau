@@ -14,7 +14,6 @@ local function findAsset(name)
 end
 
 local CustomCharacter = nil
-print("[Mya Aftermath] Initializing asset discovery...")
 
 -- Wait loop with feedback
 local startTime = tick()
@@ -22,18 +21,16 @@ while not CustomCharacter do
     CustomCharacter = findAsset("CustomCharacter")
     if not CustomCharacter then
         if tick() - startTime > 20 then
-            warn("[Mya Aftermath] Still waiting for 'CustomCharacter' folder. Are you sure you are in a match?")
-            startTime = tick() -- Reset warning timer
+            startTime = tick() -- Reset timer
         end
         task.wait(2)
     end
 end
 
-print("[Mya Aftermath] Found 'CustomCharacter' at: " .. CustomCharacter:GetFullName())
+
 
 local PlayerListMod = CustomCharacter:FindFirstChild("PlayerList", true)
 if not PlayerListMod then
-    print("[Mya Aftermath] Waiting for 'PlayerList' module...")
     PlayerListMod = CustomCharacter:WaitForChild("PlayerList", 20)
 end
 
@@ -42,7 +39,6 @@ if not PlayerListMod then
 end
 
 local PlayerList = require(PlayerListMod)
-print("[Mya Aftermath] PlayerList required successfully.")
 
 local LocalPlayer   = Players.LocalPlayer
 local CurrentCamera = workspace.CurrentCamera
@@ -455,7 +451,7 @@ function module.mount(ctx)
         Callback = function(v) esp.maxDist = v end,
     })
 
-    local vehicleSec = espTab:AddSection("Vehicles")
+    local vehicleSec = VisualsTab:AddSection("Vehicles")
     vehicleSec:AddToggle("VehicleESP", {
         Title    = "Enabled",
         Default  = false,
@@ -470,7 +466,7 @@ function module.mount(ctx)
         Callback = function(v) esp.vehicleDist = v end,
     })
 
-    local graveSec = espTab:AddSection("Graves")
+    local graveSec = VisualsTab:AddSection("Graves")
     graveSec:AddToggle("GraveESP", {
         Title    = "Enabled",
         Default  = false,
@@ -517,18 +513,15 @@ function module.mount(ctx)
                 table.insert(_active.connections, PlayerList.PlayerAdded:Connect(function(p)
                     if p ~= LocalPlayer then addESP(p) end
                 end))
-                print("[Mya Aftermath] Hooked custom PlayerList.PlayerAdded signal.")
             else
                 table.insert(_active.connections, Players.PlayerAdded:Connect(function(p)
                     if p ~= LocalPlayer then addESP(p) end
                 end))
-                print("[Mya Aftermath] Falling back to standard Players.PlayerAdded.")
             end
         end)
     end
 
     setupTracking()
-    print("[Mya Aftermath] Tracking system active.")
 
     -- ─── Entity Tracking ─────────────────────────────────────────────────────
 

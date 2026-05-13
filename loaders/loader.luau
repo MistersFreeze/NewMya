@@ -82,34 +82,26 @@ local function runAnalytics(baseUrl: string, config: { [string]: any })
 	end
 	local webhook = config.ANON_ANALYTICS_WEBHOOK_URL
 	if typeof(webhook) ~= "string" or #webhook == 0 then
-		warn("[Mya Analytics] Enabled but webhook is empty.")
 		return
 	end
 
 	task.spawn(function()
 		local src, err = getCandidatePath("lib/analytics.luau")
 		if not src then
-			warn("[Mya Analytics] fetch failed: " .. tostring(err))
 			return
 		end
 		local chunk, compileErr = loadstring(src)
 		if typeof(chunk) ~= "function" then
-			warn("[Mya Analytics] compile failed: " .. tostring(compileErr))
 			return
 		end
 		local okModule, analyticsOrErr = pcall(chunk)
 		if not okModule then
-			warn("[Mya Analytics] runtime failed: " .. tostring(analyticsOrErr))
 			return
 		end
 		if typeof(analyticsOrErr) ~= "table" or typeof(analyticsOrErr.sendLog) ~= "function" then
-			warn("[Mya Analytics] invalid module export.")
 			return
 		end
 		local okSend, sendErr = analyticsOrErr.sendLog(webhook, "LoaderBoot", baseUrl .. "New_Mya/loaders/loader.luau")
-		if not okSend then
-			warn("[Mya Analytics] send failed: " .. tostring(sendErr))
-		end
 	end)
 end
 
@@ -167,7 +159,6 @@ local function boot()
 		error("config runtime error: " .. tostring(configOrErr))
 	end
 	if typeof(configOrErr) ~= "table" then
-		warn("[Mya Debug] Config Source Start: " .. string.sub(configSrc, 1, 100))
 		error("config must return a table (got " .. typeof(configOrErr) .. ").")
 	end
 	local config = configOrErr
@@ -210,6 +201,3 @@ local function boot()
 end
 
 local ok, err = pcall(boot)
-if not ok then
-	warn("[Mya Loader] " .. tostring(err))
-end
