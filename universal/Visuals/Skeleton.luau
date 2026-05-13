@@ -14,38 +14,69 @@ return function(ctx)
 	local visCheck    = false
 	local HEAD_DOT_RADIUS = 5
 
-	-- ── R15 bones: { partA, attachA, partB, attachB } ────────────────────────────
-	-- Uses RigAttachment WorldPosition so arms/legs follow actual joint positions.
+	-- ── R15 bones ─────────────────────────────────────────────────────────────────
+	-- Format: { partA, attachA, partB, attachB }
+	--   attachA/B = RigAttachment name  → uses att.WorldPosition
+	--   attachA/B = "m:MotorName"       → uses (partA.CFrame * motor.C0).Position
+	--   attachA/B = nil                 → uses part.Position (center)
+	--
+	-- KEY RULE: the two points must be DIFFERENT joints.
+	-- Wrong: { "Head","NeckRigAtt","UpperTorso","NeckRigAtt" }  ← same world pos!
+	-- Right: { "UpperTorso","NeckRigAtt","Head",nil }           ← neck joint → head center
 
 	local R15_BONES = {
-		{ "Head",          "NeckRigAttachment",         "UpperTorso",    "NeckRigAttachment"         },
-		{ "UpperTorso",    "UpperWaistRigAttachment",   "LowerTorso",    "UpperWaistRigAttachment"   },
-		{ "UpperTorso",    "LeftShoulderRigAttachment", "LeftUpperArm",  "LeftShoulderRigAttachment" },
-		{ "LeftUpperArm",  "LeftElbowRigAttachment",    "LeftLowerArm",  "LeftElbowRigAttachment"    },
-		{ "LeftLowerArm",  "LeftWristRigAttachment",    "LeftHand",      "LeftWristRigAttachment"    },
-		{ "UpperTorso",    "RightShoulderRigAttachment","RightUpperArm", "RightShoulderRigAttachment"},
-		{ "RightUpperArm", "RightElbowRigAttachment",   "RightLowerArm", "RightElbowRigAttachment"   },
-		{ "RightLowerArm", "RightWristRigAttachment",   "RightHand",     "RightWristRigAttachment"   },
-		{ "LowerTorso",    "LeftHipRigAttachment",      "LeftUpperLeg",  "LeftHipRigAttachment"      },
-		{ "LeftUpperLeg",  "LeftKneeRigAttachment",     "LeftLowerLeg",  "LeftKneeRigAttachment"     },
-		{ "LeftLowerLeg",  "LeftAnkleRigAttachment",    "LeftFoot",      "LeftAnkleRigAttachment"    },
-		{ "LowerTorso",    "RightHipRigAttachment",     "RightUpperLeg", "RightHipRigAttachment"     },
-		{ "RightUpperLeg", "RightKneeRigAttachment",    "RightLowerLeg", "RightKneeRigAttachment"    },
-		{ "RightLowerLeg", "RightAnkleRigAttachment",   "RightFoot",     "RightAnkleRigAttachment"   },
+		-- Head: neck joint (top of UpperTorso) → head center
+		{ "UpperTorso",    "NeckRigAttachment",          "Head",          nil                          },
+		-- Spine: neck joint (top of UpperTorso) → waist joint (bottom of UpperTorso)
+		{ "UpperTorso",    "NeckRigAttachment",           "UpperTorso",    "UpperWaistRigAttachment"    },
+		-- Collarbone: left shoulder joint ↔ right shoulder joint (both on UpperTorso)
+		{ "UpperTorso",    "LeftShoulderRigAttachment",   "UpperTorso",    "RightShoulderRigAttachment" },
+		-- Pelvis: waist joint → left hip joint, waist → right hip (both on LowerTorso)
+		{ "LowerTorso",    "UpperWaistRigAttachment",     "LowerTorso",    "LeftHipRigAttachment"       },
+		{ "LowerTorso",    "UpperWaistRigAttachment",     "LowerTorso",    "RightHipRigAttachment"      },
+		-- Left arm: shoulder → elbow → wrist → hand
+		{ "UpperTorso",    "LeftShoulderRigAttachment",   "LeftUpperArm",  "LeftElbowRigAttachment"     },
+		{ "LeftUpperArm",  "LeftElbowRigAttachment",      "LeftLowerArm",  "LeftWristRigAttachment"     },
+		{ "LeftLowerArm",  "LeftWristRigAttachment",      "LeftHand",      nil                          },
+		-- Right arm
+		{ "UpperTorso",    "RightShoulderRigAttachment",  "RightUpperArm", "RightElbowRigAttachment"    },
+		{ "RightUpperArm", "RightElbowRigAttachment",     "RightLowerArm", "RightWristRigAttachment"    },
+		{ "RightLowerArm", "RightWristRigAttachment",     "RightHand",     nil                          },
+		-- Left leg: hip → knee → ankle → foot
+		{ "LowerTorso",    "LeftHipRigAttachment",        "LeftUpperLeg",  "LeftKneeRigAttachment"      },
+		{ "LeftUpperLeg",  "LeftKneeRigAttachment",       "LeftLowerLeg",  "LeftAnkleRigAttachment"     },
+		{ "LeftLowerLeg",  "LeftAnkleRigAttachment",      "LeftFoot",      nil                          },
+		-- Right leg
+		{ "LowerTorso",    "RightHipRigAttachment",       "RightUpperLeg", "RightKneeRigAttachment"     },
+		{ "RightUpperLeg", "RightKneeRigAttachment",      "RightLowerLeg", "RightAnkleRigAttachment"    },
+		{ "RightLowerLeg", "RightAnkleRigAttachment",     "RightFoot",     nil                          },
 	}
 
+	-- R6 bones: use "m:MotorName" to read the Motor6D joint position from the Torso.
+	-- This gives actual joint positions instead of part centers, eliminating the star shape.
 	local R6_BONES = {
-		{ "Head",  nil, "Torso",     nil },
-		{ "Torso", nil, "Left Arm",  nil },
-		{ "Torso", nil, "Right Arm", nil },
-		{ "Torso", nil, "Left Leg",  nil },
-		{ "Torso", nil, "Right Leg", nil },
+		-- Head
+		{ "Torso", "m:Neck",           "Head",      nil              },
+		-- Upper torso outline: neck to shoulders, collarbone
+		{ "Torso", "m:Neck",           "Torso",     "m:Left Shoulder"  },
+		{ "Torso", "m:Neck",           "Torso",     "m:Right Shoulder" },
+		{ "Torso", "m:Left Shoulder",  "Torso",     "m:Right Shoulder" },
+		-- Torso sides: shoulder to hip
+		{ "Torso", "m:Left Shoulder",  "Torso",     "m:Left Hip"       },
+		{ "Torso", "m:Right Shoulder", "Torso",     "m:Right Hip"      },
+		-- Pelvis
+		{ "Torso", "m:Left Hip",       "Torso",     "m:Right Hip"      },
+		-- Arms: shoulder joint → arm center
+		{ "Torso", "m:Left Shoulder",  "Left Arm",  nil                },
+		{ "Torso", "m:Right Shoulder", "Right Arm", nil                },
+		-- Legs: hip joint → leg center
+		{ "Torso", "m:Left Hip",       "Left Leg",  nil                },
+		{ "Torso", "m:Right Hip",      "Right Leg", nil                },
 	}
 
-	local MAX_LINES = #R15_BONES
+	local MAX_LINES = #R15_BONES  -- R15 is always the larger set
 
 	-- ── Drawing pool ──────────────────────────────────────────────────────────────
-	-- pool[player] = { lines, dot, char, partRefs, attRefs, bones }
 
 	local pool        = {}
 	local playerConns = {}
@@ -212,8 +243,14 @@ return function(ctx)
 				lineColor = (e.visible ~= false) and color or notVisColor
 			end
 
+			-- Get screen-space position for a point defined by (partName, attachOrMotor).
+			-- Supports:
+			--   nil              → part.Position (center)
+			--   "SomeName"       → part:FindFirstChild("SomeName").WorldPosition (Attachment)
+			--   "m:MotorName"    → (part.CFrame * Motor6D.C0).Position (joint via Motor6D)
 			local function getJointSP(partName, attachName)
 				if not partName then return nil end
+
 				local part = p.partRefs[partName]
 				if part == nil then
 					part = char:FindFirstChild(partName)
@@ -222,14 +259,31 @@ return function(ctx)
 				if not part or part == false then return nil end
 
 				if attachName then
-					local key = partName .. "/" .. attachName
-					local att = p.attRefs[key]
-					if att == nil then
-						att = part:FindFirstChild(attachName)
-						p.attRefs[key] = att or false
+					local isMotor = attachName:sub(1, 2) == "m:"
+					local key     = partName .. "/" .. attachName
+					local cached  = p.attRefs[key]
+
+					if cached == nil then
+						if isMotor then
+							local mName = attachName:sub(3)
+							local m = part:FindFirstChild(mName)
+							cached = (m and m:IsA("Motor6D")) and m or false
+						else
+							local att = part:FindFirstChild(attachName)
+							cached = att or false
+						end
+						p.attRefs[key] = cached
 					end
-					if att and att ~= false then
-						local v = cam:WorldToViewportPoint(att.WorldPosition)
+
+					if cached and cached ~= false then
+						local worldPos
+						if isMotor then
+							-- Joint world position = Part0.CFrame * Motor6D.C0
+							worldPos = (part.CFrame * cached.C0).Position
+						else
+							worldPos = cached.WorldPosition
+						end
+						local v = cam:WorldToViewportPoint(worldPos)
 						return Vector2.new(v.X, v.Y)
 					end
 				end

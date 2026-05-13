@@ -315,6 +315,7 @@ return function(BASE_URL, config)
 
 	local modules = {}
 	local MODULE_PATHS = {
+		"New_Mya/universal/Visuals/Watermark.luau",
 		"New_Mya/universal/Visuals/Esp.luau",
 		"New_Mya/universal/Visuals/Tracers.luau",
 		"New_Mya/universal/Visuals/Skeleton.luau",
