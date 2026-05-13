@@ -229,9 +229,10 @@ return function(ctx)
 	local flySection = movementTab:AddSection("Fly")
 
 	local flyBind = makeBind(flySection, {
-		key   = "mvFlyOn01x",
-		title = "Fly",
-		icon  = "solar/wind-bold",
+		key         = "mvFlyOn01x",
+		title       = "Fly",
+		icon        = "solar/wind-bold",
+		displayName = "Fly",
 	})
 
 	flySection:AddSlider("mvFlySp1x", {
@@ -247,9 +248,10 @@ return function(ctx)
 	local ncSection = movementTab:AddSection("Noclip")
 
 	local noclipBind = makeBind(ncSection, {
-		key   = "mvNcOn001x",
-		title = "Noclip",
-		icon  = "solar/ghost-bold",
+		key         = "mvNcOn001x",
+		title       = "Noclip",
+		icon        = "solar/ghost-bold",
+		displayName = "Noclip",
 	})
 
 	-- Walk Speed ------------------------------------------------------------------

@@ -197,6 +197,9 @@ return function(BASE_URL, config)
 	pcall(function() MB4 = Enum.UserInputType.MouseButton4 end)
 	pcall(function() MB5 = Enum.UserInputType.MouseButton5 end)
 
+	-- Registry of all makeBind widgets so KeybindDisplay can read them.
+	local bindRegistry = {}
+
 	local function makeBind(section, opts)
 		local enabled     = opts.default or false
 		local bindMode    = "Always"
@@ -285,6 +288,16 @@ return function(BASE_URL, config)
 			return toggleState
 		end
 
+		if opts.displayName then
+			bindRegistry[#bindRegistry + 1] = {
+				displayName = opts.displayName,
+				isActive    = isActive,
+				getKey      = function() return kb and kb.Value or "None" end,
+				getMode     = function() return bindMode end,
+				getEnabled  = function() return enabled end,
+			}
+		end
+
 		return {
 			isActive   = isActive,
 			getEnabled = function() return enabled end,
@@ -333,6 +346,7 @@ return function(BASE_URL, config)
 		UserInputService  = UserInputService,
 		Workspace         = Workspace,
 		themeSync         = themeSync,
+		bindRegistry      = bindRegistry,
 		makeBind          = makeBind,
 		isSameTeam        = function(p)
 			if not teamCheck then return false end
@@ -352,6 +366,8 @@ return function(BASE_URL, config)
 		"New_Mya/universal/Combat/AimAssist.luau",
 		"New_Mya/universal/Combat/SilentAim.luau",
 		"New_Mya/universal/Movement/Movement.luau",
+		-- KeybindDisplay loads last so all makeBind registrations are complete.
+		"New_Mya/universal/Visuals/KeybindDisplay.luau",
 	}
 
 	for _, path in ipairs(MODULE_PATHS) do

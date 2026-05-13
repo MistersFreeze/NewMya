@@ -39,11 +39,23 @@ return function(ctx)
 		l.Thickness = 1.5
 		fovDashLines[i] = l
 	end
+	local DOT_COUNT = 40
+	local fovDots   = {}
+	for i = 1, DOT_COUNT do
+		local d = Drawing.new("Circle")
+		d.Visible  = false
+		d.Filled   = true
+		d.Radius   = 2.5
+		d.NumSides = 8
+		d.Color    = fovColor
+		fovDots[i] = d
+	end
 
 	local function drawFovCircle(center, radius)
 		if not showCircle then
 			fovCircle.Visible = false
 			for _, l in ipairs(fovDashLines) do l.Visible = false end
+			for _, d in ipairs(fovDots) do d.Visible = false end
 			return
 		end
 		if fovStyle == "Solid" then
@@ -52,8 +64,10 @@ return function(ctx)
 			fovCircle.Color    = fovColor
 			fovCircle.Visible  = true
 			for _, l in ipairs(fovDashLines) do l.Visible = false end
-		else
+			for _, d in ipairs(fovDots) do d.Visible = false end
+		elseif fovStyle == "Dashed" then
 			fovCircle.Visible = false
+			for _, d in ipairs(fovDots) do d.Visible = false end
 			local step = (2 * math.pi) / DASH_COUNT
 			for i = 1, DASH_COUNT do
 				local l = fovDashLines[i]
@@ -67,6 +81,16 @@ return function(ctx)
 				else
 					l.Visible = false
 				end
+			end
+		elseif fovStyle == "Dotted" then
+			fovCircle.Visible = false
+			for _, l in ipairs(fovDashLines) do l.Visible = false end
+			local step = (2 * math.pi) / DOT_COUNT
+			for i = 1, DOT_COUNT do
+				local angle = (i - 1) * step
+				fovDots[i].Position = Vector2.new(center.X + math.cos(angle) * radius, center.Y + math.sin(angle) * radius)
+				fovDots[i].Color    = fovColor
+				fovDots[i].Visible  = true
 			end
 		end
 	end
@@ -189,9 +213,10 @@ return function(ctx)
 	})
 
 	silentBind = makeBind(section, {
-		key      = "saEnable01x",
-		title    = "Enable",
-		onEnabled = function(v)
+		key         = "saEnable01x",
+		title       = "Enable",
+		displayName = "Silent Aim",
+		onEnabled   = function(v)
 			enabled = v
 			if not v then closestPart = nil end
 		end,
@@ -252,20 +277,26 @@ return function(ctx)
 			fovColor = c
 			fovCircle.Color = c
 			for _, l in ipairs(fovDashLines) do l.Color = c end
+			for _, d in ipairs(fovDots) do d.Color = c end
 		end,
 	})
 
 	section:AddDropdown("saFovSty1x", {
 		Title    = "FOV Style",
-		Values   = { "Solid", "Dashed" },
+		Values   = { "Solid", "Dashed", "Dotted" },
 		Default  = "Solid",
 		NoSearch = true,
 		Callback = function(v)
 			fovStyle = v
 			if v == "Solid" then
 				for _, l in ipairs(fovDashLines) do l.Visible = false end
-			else
+				for _, d in ipairs(fovDots) do d.Visible = false end
+			elseif v == "Dashed" then
 				fovCircle.Visible = false
+				for _, d in ipairs(fovDots) do d.Visible = false end
+			elseif v == "Dotted" then
+				fovCircle.Visible = false
+				for _, l in ipairs(fovDashLines) do l.Visible = false end
 			end
 		end,
 	})
@@ -291,6 +322,7 @@ return function(ctx)
 		fovCircle.Visible = false
 		pcall(function() fovCircle:Remove() end)
 		for _, l in ipairs(fovDashLines) do pcall(function() l:Remove() end) end
+		for _, d in ipairs(fovDots) do pcall(function() d:Remove() end) end
 		pcall(function() heartbeatConn:Disconnect() end)
 	end
 

@@ -186,24 +186,20 @@ return function(ctx)
 		local cam = data.cam or Workspace.CurrentCamera
 		if not cam then hideAll() return end
 
-		local camCF    = cam.CFrame
-		local center   = data.screenCenter
-		local scrSize  = data.screenSize
+		local camCF = cam.CFrame
+		local center = data.screenCenter
+		if not center then hideAll() return end
 
 		local off = {}
 		for _, e in ipairs(data.players) do
 			if isSameTeam(e.player) then continue end
-			-- Robust off-screen check: use depth + bounds rather than onScreen alone.
-			-- Some games return onScreen=true even for players outside the viewport.
-			local depth = e.depth or 0
-			local sp    = e.rootSp
-			local trulyOffScreen = depth <= 0
-				or sp.X < -20 or sp.X > scrSize.X + 20
-				or sp.Y < -20 or sp.Y > scrSize.Y + 20
-			if not trulyOffScreen then continue end
+			-- e.onScreen is already a bounds-based check from the main loop (not the
+			-- unreliable Roblox rin boolean). Skip players who are on screen.
+			if e.onScreen then continue end
+			if not e.rootPos then continue end
 			off[#off + 1] = e
 		end
-		table.sort(off, function(a, b) return a.dist < b.dist end)
+		table.sort(off, function(a, b) return (a.dist or 0) < (b.dist or 0) end)
 
 		local n = math.min(#off, MAX_TARGETS)
 		ensurePool(n)
@@ -212,20 +208,24 @@ return function(ctx)
 		if n == 0 then return end
 
 		for i = 1, n do
-			local e  = off[i]
-			local ld = camCF:VectorToObjectSpace(e.rootPos - camCF.Position)
-			local sx = ld.X
-			local sy = -ld.Y
-			if ld.Z >= 0 then sx, sy = -sx, -sy end
-			local mag = math.sqrt(sx * sx + sy * sy)
-			if mag < 0.001 then sx, sy = 1, 0 else sx, sy = sx / mag, sy / mag end
+			local e = off[i]
+
+			-- Direction in screen space via explicit dot products.
+			-- Camera: RightVector = screen +X, UpVector = screen -Y, LookVector = forward.
+			local toTarget = e.rootPos - camCF.Position
+			local dx =  toTarget:Dot(camCF.RightVector)
+			local dy = -toTarget:Dot(camCF.UpVector)
+			local dz =  toTarget:Dot(camCF.LookVector)
+			if dz <= 0 then dx, dy = -dx, -dy end  -- behind camera: flip toward them
+			local mag = math.sqrt(dx * dx + dy * dy)
+			if mag < 0.001 then dx, dy = 1, 0 else dx, dy = dx / mag, dy / mag end
 
 			local useColor = color
 			if visCheck then
 				useColor = (e.visible ~= false) and color or notVisColor
 			end
 
-			drawSlot(pool[i], sx, sy, center, useColor)
+			drawSlot(pool[i], dx, dy, center, useColor)
 		end
 	end
 
