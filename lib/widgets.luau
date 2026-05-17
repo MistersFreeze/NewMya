@@ -286,31 +286,25 @@ local function newOverlayFrame(opts)
             return ok and v == true
         end
 
-        -- [1] Hover: show/hide grip when mouse enters/leaves the frame.
-        -- arcClip is inside the frame so MouseLeave only fires on the outer boundary.
-        dragConns[1] = frame.MouseEnter:Connect(function()
-            mouseInside = true
-            resizeGrip.Visible = true
-            pcall(function() if gripStroke then gripStroke.Transparency = 0.35 end end)
-        end)
-        dragConns[2] = frame.MouseLeave:Connect(function()
-            mouseInside = false
-            if not resizing then
-                resizeGrip.Visible = false
-                pcall(function() if gripStroke then gripStroke.Transparency = 1.0 end end)
-            end
-        end)
+        -- Grip visibility helper — called from InputChanged so it's position-based
+        -- rather than relying on MouseEnter/MouseLeave which are unreliable from gethui().
+        local function setGripVisible(show)
+            if mouseInside == show then return end
+            mouseInside = show
+            resizeGrip.Visible = show
+            pcall(function() gripStroke.Transparency = show and 0.35 or 1.0 end)
+        end
 
-        -- [3] Resize begins on grip click (arcClip is inside frame; fires before frame.InputBegan)
-        dragConns[3] = resizeGrip.InputBegan:Connect(function(input)
+        -- [1] Resize begins on grip click
+        dragConns[1] = resizeGrip.InputBegan:Connect(function(input)
             if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
             resizing     = true
             dragStart    = UIS:GetMouseLocation()
             rsScaleStart = currentScale
         end)
 
-        -- [4] Frame drag (skip when resize is active)
-        dragConns[4] = frame.InputBegan:Connect(function(input)
+        -- [2] Frame drag (skip when resize is active)
+        dragConns[2] = frame.InputBegan:Connect(function(input)
             if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
             if resizing then return end
             if not isGuiOpen() then return end
@@ -319,16 +313,17 @@ local function newOverlayFrame(opts)
             dragPosStart = Vector2.new(posX, posY)
         end)
 
-        -- [5] Single move handler for both drag and resize
-        dragConns[5] = UIS.InputChanged:Connect(function(input)
+        -- [3] Move handler: drag, resize, and position-based hover detection.
+        -- Using AbsolutePosition/Size for hover is more reliable than MouseEnter/MouseLeave
+        -- when the ScreenGui is parented to gethui().
+        dragConns[3] = UIS.InputChanged:Connect(function(input)
             if input.UserInputType ~= Enum.UserInputType.MouseMovement then return end
-            if not (dragging or resizing) then return end
             local mouse = UIS:GetMouseLocation()
             if resizing then
                 local delta = mouse - dragStart
                 currentScale  = math.clamp(rsScaleStart + (delta.X + delta.Y) / 250, 0.4, 3.0)
                 uiScale.Scale = currentScale
-            else
+            elseif dragging then
                 local delta = mouse - dragStart
                 local vp = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize
                     or Vector2.new(1920, 1080)
@@ -336,18 +331,31 @@ local function newOverlayFrame(opts)
                 posY = math.clamp(math.floor(dragPosStart.Y + delta.Y), 0, vp.Y - 20)
                 frame.Position = UDim2.fromOffset(posX, posY)
             end
+            -- Hover: show/hide grip based on whether mouse is inside the frame bounds.
+            if not resizing then
+                local fp = frame.AbsolutePosition
+                local fs = frame.AbsoluteSize
+                local inside = mouse.X >= fp.X and mouse.X <= fp.X + fs.X
+                            and mouse.Y >= fp.Y and mouse.Y <= fp.Y + fs.Y
+                setGripVisible(inside)
+            end
         end)
 
-        -- [6] End drag or resize
-        dragConns[6] = UIS.InputEnded:Connect(function(input)
+        -- [4] End drag or resize
+        dragConns[4] = UIS.InputEnded:Connect(function(input)
             if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
             if dragging or resizing then
                 dragging = false; resizing = false
                 savePos()
-                if not mouseInside then
-                    resizeGrip.Visible = false
-                    pcall(function() if gripStroke then gripStroke.Transparency = 1.0 end end)
-                end
+                -- Re-check hover state after releasing so grip hides if mouse left the frame.
+                pcall(function()
+                    local mouse = UIS:GetMouseLocation()
+                    local fp = frame.AbsolutePosition
+                    local fs = frame.AbsoluteSize
+                    local inside = mouse.X >= fp.X and mouse.X <= fp.X + fs.X
+                                and mouse.Y >= fp.Y and mouse.Y <= fp.Y + fs.Y
+                    setGripVisible(inside)
+                end)
             end
         end)
     end)

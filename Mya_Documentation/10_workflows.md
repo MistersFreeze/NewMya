@@ -15,6 +15,54 @@
 
 If a game module is removed, also remove its `SUPPORTED_GAMES` entry and any docs mentions in the same change.
 
+## Designing Modular Game Scripts (Multi-File Pattern)
+
+For high-complexity games, monolithic modules quickly become unmaintainable. Follow the **Bloodlines Modular Standard**:
+
+### 1. The Dynamic Entry Bootstrapper (`init.luau`)
+The entry point serves as the controller that creates the UI Window, defines tabs, registers shared services/connections, and mounts domain sub-modules:
+- **Contract**: Must return a table exporting `mount(ctx)` and `unmount()`.
+- **Context Injection**:
+  ```lua
+  local module = {}
+  function module.mount(ctx)
+      -- Extract loader variables
+      local BASE_URL = ctx.baseUrl
+      local Fluent = ctx.Fluent
+      local SaveManager = ctx.SaveManager
+      local InterfaceManager = ctx.InterfaceManager
+      
+      -- Create Tabs
+      local visualsTab = Window:AddTab({ Title = "Visuals", Icon = "solar/eye-bold" })
+      
+      -- Inject into sub-module context
+      local subCtx = {
+          visualsTab = visualsTab,
+          Fluent = Fluent,
+          baseUrl = BASE_URL,
+          Players = game:GetService("Players"),
+          -- Other shared variables...
+      }
+      
+      -- Fetch and load sub-modules
+      local path = "New_Mya/games/MyGame_PlaceId/Visuals/Esp.luau"
+      local src = fetchModule(path)
+      local fn = loadstring(src, "@" .. path)()
+      local inst = fn(subCtx) -- Returns update/unmount hook
+  end
+  return module
+  ```
+
+### 2. Dependency Injection Contract for Sub-Modules
+Sub-modules inside subfolders must be decoupled, functional files:
+- **Export contract**: Must return a function accepting `subCtx` and returning an instantiation table: `{ update = function(dt), unmount = function() }`.
+- **Connections & Cleanup**: Never register listeners directly to global state without tracking them. Store all connection references locally inside the submodule closure, and cleanly disconnect every listener inside `unmount()`.
+
+### 3. Local/World Teleport Standards
+- **Weapons/Armor Stands**: Deduplicate targets in the workspace by position rather than relying on exact parent folders. Ensure search parameters exclude "Ascended" or highly privileged targets if specified.
+- **Village/Area Context**: Scrape ancestors to prefix generic workspace objects (e.g. "Merchant") with their regional context (e.g. "Sorythia Merchant") to prevent list ambiguity.
+
+
 ## GUI workflow standard
 
 1. Keep `loaders/hub.luau` on Fluent Modded as the canonical shell.

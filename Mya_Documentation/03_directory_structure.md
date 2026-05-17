@@ -34,3 +34,25 @@ With repo root = `BASE_URL`:
 ## Naming games
 
 Use `ReadableName_PlaceId` folders with `init.luau` when multi-file.
+
+### Multi-File Modular Layout Example (Bloodlines)
+
+For complex games, structure the folder to isolate functional areas into domain subdirectories:
+
+```
+New_Mya/games/Bloodlines_10266164381/
+├── init.luau             # Entry point (conforms to mount/unmount contract)
+├── Visuals/
+│   └── Esp.luau          # Render loops, character filters, environment toggles
+├── Movement/
+│   └── LocalPlayer.luau  # WalkSpeed, JumpPower, Fly, Noclip connections
+├── Player/
+│   └── Combat.luau       # Resource caches (Stamina/Chakra), NoFall, NoCooldown, NoStun
+├── Teleport/
+│   └── Waypoints.luau    # Scanning logic, players/stands/merchants dropdowns, auto-TP
+├── AutoFarm/
+│   └── SafeSpot.luau     # PERSISTENT coordinate capturing and proximity loops
+└── Misc/
+    ├── ChakraSense.luau  # Warning UI drawing, overlays (Users Widget), staff check
+    └── StreamerMode.luau # Local name/GUI text replacement hooks
+```

@@ -522,7 +522,10 @@ return function(BASE_URL: string, config: { [string]: any })
 		if typeof(runResult) == "table" and typeof(runResult.mount) == "function" then
 			-- Module is valid and ready. Now we can clear the Hub and mount.
 			teardownForSecondaryUI()
-			
+			-- Fluent's internal "window exists" flag survives Window:Destroy(), so
+			-- CreateWindow in the game module would fail without a fresh singleton.
+			recreateFluentAndManagers()
+
 			local okMount, mountErr = pcall(function()
 				_activeGameModule = runResult
 				runResult.mount({
