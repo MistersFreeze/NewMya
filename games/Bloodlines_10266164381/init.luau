@@ -76,6 +76,12 @@ local jumppower = {
     power   = 100,
 }
 
+local safeSpot = {
+    pos = nil,
+    autoTp = false,
+    proxCheck = 1000,
+}
+
 -- ─── Entity classification ────────────────────────────────────────────────────
 
 local function isPlayerChar(model)
@@ -609,25 +615,53 @@ end
 
 -- Returns total CS holders and active count.
 -- Falls back to reading the game's own PlayerGui labels if character scan yields 0.
+
+-- We maintain separate workspace variables so they can go down as well as up
+local _wsCS = { total = 0, active = 0 }
+
 -- Scrape a text string for CS counts. Returns updated (total, active).
 local function scrapeCSText(t, total, active)
-    -- "people with chakra sense" = holders (total)
-    -- Must NOT use broad "chakra sense" which also matches "active chakra sense players"
-    if t:find("people with chakra") then
-        local n = t:match("(%d+)")
+    -- Strip RichText tags before matching numbers
+    local stripped = t:gsub("<[^>]+>", "")
+    
+    if stripped:find("people with chakra") then
+        local n = stripped:match("people.-(%d+)") or stripped:match("(%d+)")
         if n then local v = tonumber(n) or 0; if v > total then total = v end end
     end
-    -- "active chakra" = currently sensing (active)
-    if t:find("active chakra") or t:find("using chakra sense") then
-        local n = t:match("(%d+)")
+    
+    if stripped:find("active chakra") or stripped:find("using chakra") then
+        local n = stripped:match("chakra.-(%d+)") or stripped:match("(%d+)")
         if n then local v = tonumber(n) or 0; if v > active then active = v end end
     end
+    
     return total, active
 end
 
--- Cache so getCSCounts() is safe to call at 60fps without freezing.
--- Workspace is scanned once asynchronously at startup (chunked, no freeze).
-local _csCache = { total = 0, active = 0, lastScan = -100 }
+local _wsLabels = {}
+
+-- Async workspace scan (yields to avoid frame spikes)
+task.spawn(function()
+    task.wait(3)
+    local objs = workspace:GetDescendants()
+    local CHUNK = 150
+    for i = 1, #objs, CHUNK do
+        for j = i, math.min(i + CHUNK - 1, #objs) do
+            local obj = objs[j]
+            if obj:IsA("TextLabel") or obj:IsA("TextButton") then
+                _wsLabels[obj] = true
+            end
+        end
+        task.wait()
+    end
+    
+    table.insert(_active.connections, workspace.DescendantAdded:Connect(function(obj)
+        if obj:IsA("TextLabel") or obj:IsA("TextButton") then
+            _wsLabels[obj] = true
+        end
+    end))
+end)
+
+local _csCache = { total = 0, active = 0, lastScan = 0 }
 
 local function getCSCounts()
     local now = tick()
@@ -638,7 +672,7 @@ local function getCSCounts()
 
     local total, active = 0, 0
 
-    -- Character scan
+    -- 1. Character scan
     for _, p in ipairs(Players:GetPlayers()) do
         if p == LocalPlayer then continue end
         local has, using = scanPlayerCS(p)
@@ -647,10 +681,10 @@ local function getCSCounts()
         if using then active = active + 1 end
     end
 
-    -- PlayerGui scan (fast — hundreds of objects at most)
+    -- 2. PlayerGui scan (fast — hundreds of objects at most)
     pcall(function()
+        -- Note: removing 'gui:IsA("ScreenGui")' check to catch BillboardGuis in PlayerGui
         for _, gui in ipairs(LocalPlayer.PlayerGui:GetChildren()) do
-            if not gui:IsA("ScreenGui") then continue end
             local gn = gui.Name:lower()
             if gn:find("mya") or gn:find("fluent") then continue end
             for _, lbl in ipairs(gui:GetDescendants()) do
@@ -661,51 +695,19 @@ local function getCSCounts()
         end
     end)
 
-    -- Blend with any higher values the workspace async scan found
-    if _csCache.total  > total  then total  = _csCache.total  end
-    if _csCache.active > active then active = _csCache.active end
+    -- 3. Workspace labels scan (fast)
+    for lbl in pairs(_wsLabels) do
+        if not lbl.Parent or not lbl:IsDescendantOf(workspace) then
+            _wsLabels[lbl] = nil
+            continue
+        end
+        total, active = scrapeCSText(lbl.Text:lower(), total, active)
+    end
 
     _csCache.total  = total
     _csCache.active = active
     return total, active
 end
-
--- Async workspace scan (done once at startup in chunks to avoid freezing).
-task.spawn(function()
-    task.wait(3)
-    local objs = workspace:GetDescendants()
-    local total, active = 0, 0
-    local CHUNK = 150
-    for i = 1, #objs, CHUNK do
-        for j = i, math.min(i + CHUNK - 1, #objs) do
-            local obj = objs[j]
-            if not (obj:IsA("TextLabel") or obj:IsA("TextButton")) then continue end
-            local t = obj.Text:lower()
-            total, active = scrapeCSText(t, total, active)
-
-            -- Event-driven: connect Changed on any label that carries CS counts
-            -- so the cache updates the instant the game changes the number.
-            if t:find("people with chakra") or t:find("active chakra") then
-                pcall(function()
-                    local conn = obj:GetPropertyChangedSignal("Text"):Connect(function()
-                        local nt = obj.Text:lower()
-                        -- Scrape from this label only; use 0 base to avoid stale carryover
-                        local lt, la = scrapeCSText(nt, 0, 0)
-                        if lt > 0 then _csCache.total  = lt end
-                        if la > 0 then _csCache.active = la end
-                        -- Push the TTL far into the future — no need to re-poll now
-                        _csCache.lastScan = tick() + 30
-                    end)
-                    -- Store for cleanup — _active is module-level, accessible here
-                    table.insert(_active.connections, conn)
-                end)
-            end
-        end
-        task.wait()   -- yield between chunks — no frame spikes
-    end
-    if total  > _csCache.total  then _csCache.total  = total  end
-    if active > _csCache.active then _csCache.active = active end
-end)
 
 -- ─── Moderator detection ─────────────────────────────────────────────────────
 -- Known staff usernames from the game dump (hardcoded in the client scripts).
@@ -987,37 +989,103 @@ end
 -- ─── Streamer mode & watermark patch ─────────────────────────────────────────
 
 local streamer = { enabled = false }
-local _streamerOrig = {}
+local _streamerOrig = { conns = {} }
 
 local function applyStreamer(char)
     char = char or LocalPlayer.Character
     if not char then return end
+    
     local hum = char:FindFirstChildWhichIsA("Humanoid")
     if hum then
-        _streamerOrig.dispName = hum.DisplayName
+        if not _streamerOrig.dispName then _streamerOrig.dispName = hum.DisplayName end
         pcall(function() hum.DisplayName = "Mya Script" end)
     end
-    for _, v in ipairs(char:GetDescendants()) do
-        if v:IsA("TextLabel") or v:IsA("TextButton") then
-            if v.Text == LocalPlayer.Name or v.Text == LocalPlayer.DisplayName
-                or (_streamerOrig.dispName and v.Text == _streamerOrig.dispName) then
-                _streamerOrig[v] = v.Text
-                pcall(function() v.Text = "Mya Script" end)
-            end
+    
+    local namesToHide = {}
+    local function addName(n)
+        if type(n) == "string" and #n > 1 and n ~= "Mya Script" then
+            namesToHide[n] = true
         end
     end
+    
+    addName(LocalPlayer.Name)
+    addName(LocalPlayer.DisplayName)
+    addName(char.Name)
+    if _streamerOrig.dispName then addName(_streamerOrig.dispName) end
+    
+    local function escapeRegex(s)
+        return (s:gsub("[%^%$%(%)%%%.%[%]%*%+%-%?]", "%%%1"))
+    end
+    
+    local function replaceNames(text)
+        if type(text) ~= "string" or text == "" then return text, false end
+        local replaced = false
+        local newText = text
+        for n in pairs(namesToHide) do
+            if newText:find(n, 1, true) then
+                newText = newText:gsub(escapeRegex(n), "Mya Script")
+                replaced = true
+            end
+        end
+        return newText, replaced
+    end
+    
+    local function attachHook(v)
+        if not (v:IsA("TextLabel") or v:IsA("TextButton") or v:IsA("TextBox")) then return end
+        
+        local function checkAndReplace()
+            local newText, matched = replaceNames(v.Text)
+            if matched then
+                if not _streamerOrig[v] then
+                    _streamerOrig[v] = v.Text
+                end
+                pcall(function() v.Text = newText end)
+            end
+        end
+        
+        checkAndReplace()
+        
+        pcall(function()
+            local conn = v:GetPropertyChangedSignal("Text"):Connect(checkAndReplace)
+            table.insert(_streamerOrig.conns, conn)
+        end)
+    end
+    
+    local function scanAndReplace(parent)
+        if not parent then return end
+        for _, v in ipairs(parent:GetDescendants()) do
+            attachHook(v)
+        end
+        local conn = parent.DescendantAdded:Connect(function(obj)
+            task.delay(0.1, function()
+                if obj.Parent then attachHook(obj) end
+            end)
+        end)
+        table.insert(_streamerOrig.conns, conn)
+    end
+
+    scanAndReplace(char)
+    scanAndReplace(LocalPlayer.PlayerGui)
 end
+
 local function restoreStreamer(char)
     char = char or LocalPlayer.Character
     if not char then return end
+    
+    for _, conn in ipairs(_streamerOrig.conns or {}) do
+        pcall(function() conn:Disconnect() end)
+    end
+    
     local hum = char:FindFirstChildWhichIsA("Humanoid")
     if hum and _streamerOrig.dispName then
         pcall(function() hum.DisplayName = _streamerOrig.dispName end)
     end
+    
     for v, orig in pairs(_streamerOrig) do
         if typeof(v) == "Instance" then pcall(function() v.Text = orig end) end
     end
-    _streamerOrig = {}
+    
+    _streamerOrig = { conns = {} }
 end
 
 local function patchWatermarkLabel(obj)
@@ -1244,6 +1312,7 @@ function module.mount(ctx)
     local MovementTab  = Window:AddTab({ Title = "Movement",  Icon = "solar/wind-bold"               })
     local PlayerTab    = Window:AddTab({ Title = "Player",    Icon = "solar/user-bold"               })
     local TeleportTab  = Window:AddTab({ Title = "Teleport",  Icon = "solar/map-point-bold"          })
+    local AutoFarmTab  = Window:AddTab({ Title = "AutoFarm",  Icon = "solar/bolt-bold"               })
     local MiscTab      = Window:AddTab({ Title = "Misc",      Icon = "solar/widget-5-bold"           })
     local ConfigTab    = Window:AddTab({ Title = "Config",    Icon = "solar/diskette-bold"           })
     local SettingsTab  = Window:AddTab({ Title = "Settings",  Icon = "solar/settings-bold"          })
@@ -1595,6 +1664,91 @@ function module.mount(ctx)
             if v then setupNoStun(LocalPlayer.Character) end
         end,
     })
+
+    -- ════════════════════════════════════════════════════════════════════════
+    -- AUTOFARM TAB
+    -- ════════════════════════════════════════════════════════════════════════
+    
+    local safeSpotSec = AutoFarmTab:AddSection("Safe Spot Settings")
+    
+    local safeSpotInfo = safeSpotSec:AddParagraph({
+        Title   = "Current Safe Spot",
+        Content = "None"
+    })
+    
+    safeSpotSec:AddButton({
+        Title = "Get Safe Spot Coordinates",
+        Callback = function()
+            local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                safeSpot.pos = hrp.CFrame
+                safeSpotInfo:SetContent(string.format("%.1f, %.1f, %.1f", hrp.Position.X, hrp.Position.Y, hrp.Position.Z))
+            end
+        end
+    })
+    
+    safeSpotSec:AddButton({
+        Title = "Delete Safe Spot",
+        Callback = function()
+            safeSpot.pos = nil
+            safeSpotInfo:SetContent("None")
+        end
+    })
+    
+    safeSpotSec:AddButton({
+        Title = "Teleport to Safe Spot",
+        Callback = function()
+            if safeSpot.pos then
+                local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                if hrp then pcall(function() hrp.CFrame = safeSpot.pos end) end
+            end
+        end
+    })
+    
+    safeSpotSec:AddSlider("SafeSpotProx", {
+        Title    = "Player Proximity Check",
+        Default  = 1000,
+        Min      = 100,
+        Max      = 3000,
+        Rounding = 0,
+        Callback = function(v) safeSpot.proxCheck = v end,
+    })
+    
+    safeSpotSec:AddToggle("AutoTpSafeSpot", {
+        Title    = "Auto TP when player near",
+        Default  = false,
+        Callback = function(v) safeSpot.autoTp = v end,
+    })
+    
+    -- Auto TP Loop
+    task.spawn(function()
+        while task.wait(0.5) do
+            if safeSpot.autoTp and safeSpot.pos then
+                local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    local isAtSafeSpot = (hrp.Position - safeSpot.pos.Position).Magnitude < 10
+                    if not isAtSafeSpot then
+                        local needTp = false
+                        for _, p in ipairs(Players:GetPlayers()) do
+                            if p ~= LocalPlayer and p.Character then
+                                local phrp = p.Character:FindFirstChild("HumanoidRootPart")
+                                if phrp then
+                                    local dist = (phrp.Position - hrp.Position).Magnitude
+                                    if dist <= safeSpot.proxCheck then
+                                        needTp = true
+                                        break
+                                    end
+                                end
+                            end
+                        end
+                        if needTp then
+                            pcall(function() hrp.CFrame = safeSpot.pos end)
+                        end
+                    end
+                end
+            end
+        end
+    end)
 
     -- ════════════════════════════════════════════════════════════════════════
     -- WIDGETS (load lib/widgets.luau, build themeSync + watermark + keybindDisplay)
@@ -2060,39 +2214,70 @@ function module.mount(ctx)
         end)
 
         -- ── 4. Weapon / armor STANDS — static world objects, not NPCs ────────────
-        -- These are Models/Parts on display stands (no NPC/Humanoid child).
+        -- These are Models/Parts on display stands.
         local WEAPON_KW = { "katana","sword","blade","dagger","kunai","shuriken",
-                             "weapon","staff","spear","bow","axe","hammer" }
+                             "weapon","staff","spear","bow","axe","hammer", "silver", "golden" }
         local ARMOR_KW  = { "armor","armour","vest","helmet","chestplate",
                              "shield","robe","cloak","cape","gear","boots","gauntlet" }
         local weaponNameSet = {}
-        local armorNameSet  = {}
+        local armorCounts  = {}
+        
+        local function getUniqueName(baseName, countsDict)
+            countsDict[baseName] = (countsDict[baseName] or 0) + 1
+            if countsDict[baseName] > 1 then
+                return baseName .. " " .. countsDict[baseName]
+            end
+            return baseName
+        end
+
         pcall(function()
             for _, obj in ipairs(workspace:GetDescendants()) do
                 if not obj:IsA("Model") then continue end
                 if obj:FindFirstChild("NPC") then continue end
-                if obj:FindFirstChildWhichIsA("Humanoid") then continue end
+                
+                local nl = obj.Name:lower()
+                if nl:find("ascended") then continue end
+                
+                local isClothingArmor = false
+                local clothingChild = obj:FindFirstChild("Clothing")
+                if clothingChild and clothingChild:IsA("Model") then
+                    isClothingArmor = true
+                end
+
+                if not isClothingArmor and obj:FindFirstChildWhichIsA("Humanoid") then continue end
+                
                 local pos = getObjPos(obj)
                 if not pos then continue end
-                local nl = obj.Name:lower()
+                
                 local village = getVillageAncestor(obj)
-                local function displayName()
-                    return village and (village .. " " .. obj.Name) or obj.Name
-                end
+                local baseName = village and (village .. " " .. obj.Name) or obj.Name
+                
                 -- Weapon stands
-                for _, kw in ipairs(WEAPON_KW) do
-                    if nl:find(kw, 1, true) and not weaponNameSet[displayName()] then
-                        weaponNameSet[displayName()] = true
-                        table.insert(tpWeapons, { name = displayName(), pos = pos })
-                        break
+                if not isClothingArmor then
+                    for _, kw in ipairs(WEAPON_KW) do
+                        if nl:find(kw, 1, true) then
+                            if not weaponNameSet[baseName] then
+                                weaponNameSet[baseName] = true
+                                table.insert(tpWeapons, { name = baseName, pos = pos })
+                            end
+                            break
+                        end
                     end
                 end
+                
                 -- Armor stands
-                for _, kw in ipairs(ARMOR_KW) do
-                    if nl:find(kw, 1, true) and not armorNameSet[displayName()] then
-                        armorNameSet[displayName()] = true
-                        table.insert(tpArmor, { name = displayName(), pos = pos })
-                        break
+                if isClothingArmor then
+                    if dedupPos(tpArmor, pos, 5) then
+                        table.insert(tpArmor, { name = getUniqueName(baseName, armorCounts), pos = pos })
+                    end
+                else
+                    for _, kw in ipairs(ARMOR_KW) do
+                        if nl:find(kw, 1, true) then
+                            if dedupPos(tpArmor, pos, 5) then
+                                table.insert(tpArmor, { name = getUniqueName(baseName, armorCounts), pos = pos })
+                            end
+                            break
+                        end
                     end
                 end
             end
@@ -2298,34 +2483,7 @@ function module.mount(ctx)
         Content = "Type a name → Create config.\nSelect → Load config.\nSet as autoload for auto-apply.",
     })
 
-    -- Read the saved autoload name and show it in the Config tab
-    local autoloadDisplay = cfgInfoSec:AddParagraph({
-        Title   = "Active Autoload",
-        Content = "None",
-    })
-    task.defer(function()
-        pcall(function()
-            local autoFile = "Mya/Bloodlines/Config/autoload.cfg"
-            if typeof(isfile) == "function" and isfile(autoFile) then
-                local saved = readfile(autoFile)
-                if saved and #saved > 0 then
-                    pcall(function() autoloadDisplay:SetContent(saved) end)
-                end
-            end
-        end)
-        -- Also update when autoload is changed via the UI
-        local origAL = SaveManager.SetAutoloadConfig
-        if origAL then
-            local prevWrap = SaveManager.SetAutoloadConfig
-            SaveManager.SetAutoloadConfig = function(self, name)
-                local ok, err = prevWrap(self, name)
-                pcall(function()
-                    autoloadDisplay:SetContent(name and name ~= "" and name or "None")
-                end)
-                return ok, err
-            end
-        end
-    end)
+
 
     SaveManager:BuildConfigSection(ConfigTab)
 
