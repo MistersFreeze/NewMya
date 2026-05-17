@@ -18,6 +18,7 @@ return {
 	-- PlaceId -> script path under repo root
 	SUPPORTED_GAMES = {
 		[112237800564065] = "New_Mya/games/Aftermath_112237800564065/init.luau",
+		[10266164381]     = "New_Mya/games/Bloodlines_10266164381/init.luau",
 	},
 
 	THEME = {

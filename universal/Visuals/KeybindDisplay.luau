@@ -47,7 +47,7 @@ return function(ctx)
 
 	-- ── Position persistence ──────────────────────────────────────────────────────
 
-	local POS_FILE = "MyaUniversal/keybind_pos.json"
+	local POS_FILE = "Mya/Universal/keybind_pos.json"
 	local posX, posY = 14, 80
 
 	pcall(function()
@@ -62,7 +62,10 @@ return function(ctx)
 	local function savePos()
 		pcall(function()
 			if typeof(writefile) ~= "function" then return end
-			if typeof(makefolder) == "function" then pcall(makefolder, "MyaUniversal") end
+			if typeof(makefolder) == "function" then
+				pcall(makefolder, "Mya")
+				pcall(makefolder, "Mya/Universal")
+			end
 			writefile(POS_FILE, HttpService:JSONEncode({ x = posX, y = posY }))
 		end)
 	end

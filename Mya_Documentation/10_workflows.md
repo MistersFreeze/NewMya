@@ -83,3 +83,90 @@ Any new hook, flag, or package gets a row in [12_hooks_and_extensions.md](12_hoo
 - Global/default GUI minimize bind baseline: `RightShift`
 - In-game menu key defaults should map to `RightShift` and remain configurable unless explicitly locked by design
 - Deprecated defaults (`Delete`, `LeftControl`) should not be used as startup defaults
+
+---
+
+## Overlay widget workflow (`lib/widgets.luau`)
+
+### Loading
+```lua
+local src = game:HttpGet(ctx.baseUrl .. "New_Mya/lib/widgets.luau", true)
+local widgets = loadstring(src, "@widgets")()
+local ts  = widgets.newThemeSync(Fluent)
+local wm  = widgets.newWatermark({ Fluent=Fluent, UIS=UIS, themeSync=ts, tab=MiscTab, folder="MyaGame" })
+local kbd = widgets.newKeybindDisplay({ Fluent=Fluent, UIS=UIS, themeSync=ts, tab=MiscTab,
+                                        folder="MyaGame", bindRegistry=bindRegistry })
+```
+
+### bindRegistry contract
+Each entry must supply: `displayName`, `getKey()→string|nil`, `getMode()→string`, `isActive()→bool`.
+- `getKey()` must read from `Fluent.Options[id].Value` (Fluent Modded stores the key string there, not in `.Key`).
+- Return `nil` from `getKey()` to hide the entry from the display.
+
+### Widget sections placement
+Put Watermark and Keybind Display sections in the **Misc** tab, not Visuals.
+
+### Resize / position persistence
+- Both position `{x,y}` and scale `{scale}` are saved to `posFile` as a single JSON object.
+- Resize is triggered by dragging the bottom-right arc handle (22×22 TextButton).
+- `UIScale` on the frame controls visual size (0.4 × – 3.0 ×). The arc stroke is white, invisible until hover.
+
+### Update loop
+```lua
+_active.widgetConn = RunService.RenderStepped:Connect(function()
+    if _active.watermark      then pcall(_active.watermark.update)      end
+    if _active.keybindDisplay then pcall(_active.keybindDisplay.update) end
+    pcall(updateUsersWidget)
+end)
+```
+
+---
+
+## Bloodlines game script — registered features (PlaceId 10266164381)
+
+### Tab structure
+Visuals · Movement · Player · Teleport · Misc · Config · Settings
+
+### Visuals
+- Player ESP (box, name, distance, health bar, max dist 3000)
+- NPC ESP (dialog NPCs, color, max dist 5000)
+- Mob ESP (combat enemies, health bar, color, max dist 5000)
+- Environment: Remove Fog, Remove Rain, Fullbright
+
+### Movement
+- Fly (keybind + button, speed slider)
+- Noclip (keybind + button) — parts cached on `CharacterAdded`
+- Walk Speed (keybind + button, slider 16–500)
+- Jump Power (keybind + button, slider 50–500)
+
+### Player
+- No Fall Damage (toggle + keybind, synced)
+- Remove M1 Cooldown (toggle, uses `getgc()`)
+- No Stun (toggle, watches `Settings.Stunned`)
+- Infinite Stamina (toggle, cached `NumberValue` write on Heartbeat)
+- Infinite Chakra (toggle, cached `NumberValue` write on Heartbeat)
+
+### Teleport
+- Chakra Points — scans `workspace.ChakraPoints`, reads `PointName` StringValue
+- Merchants — all "Merchant"/"Food Merchant"/"Chef"/"InnKeeper" NPCs, prefixed with village ancestor name
+- NPCs — all NPC-tagged workspace models, deduped by name
+- Players — live dropdown + Refresh + Teleport button
+
+### Misc (overlays)
+- Watermark (via `lib/widgets.luau`)
+- Keybind Display (via `lib/widgets.luau`)
+- Users widget — nearest player + CS Users + Sensing, updates at 0.3 s
+- Streamer Mode — replaces `Humanoid.DisplayName` with "Mya Script"
+
+### Chakra Sense notification
+Three-layer detection: `DataEvent.OnClientEvent`, `Settings.Stunned` BoolValue watcher, Heartbeat poll of `getCSCounts()` (fires when active count goes 0 → positive). 3-second debounce.
+
+### CS counts (`getCSCounts`)
+- Tries character-based scan, PlayerGui scraping, async chunked workspace scan (150 objs/frame).
+- Result cached for 2 s. Event-driven: after the async scan, connects `GetPropertyChangedSignal("Text")` to any TextLabel containing "people with chakra" or "active chakra" — updates cache instantly when the game changes the number, and pushes the TTL 30 s into the future.
+
+### Performance notes
+- Noclip: character `BasePart` list cached on spawn → Stepped loop has no `GetDescendants` call.
+- Infinite Stamina/Chakra: `NumberValue` + cap cached on spawn → Heartbeat loop is O(n cached values).
+- Widget Heartbeat position: skipped when `AbsolutePosition`/`AbsoluteSize` unchanged.
+- Workspace CS scan: single run at startup, yielding every 150 objects to prevent frame spikes.

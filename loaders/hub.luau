@@ -146,16 +146,48 @@ return function(BASE_URL: string, config: { [string]: any })
 	SaveManager:SetLibrary(Fluent)
 	InterfaceManager:SetLibrary(Fluent)
 	FloatingButtonManager:SetLibrary(Fluent)
-	InterfaceManager:SetFolder("MyaHub")
-	SaveManager:SetFolder("MyaHub/Config")
-	FloatingButtonManager:SetFolder("MyaHub/Floating")
+	InterfaceManager:SetFolder("Mya/Hub")
+	SaveManager:SetFolder("Mya/Hub/Config")
+	FloatingButtonManager:SetFolder("Mya/Hub/Floating")
+
+	-- Config save / autoload notifications
+	pcall(function()
+		local origSave = SaveManager.SaveConfig
+		if origSave then
+			SaveManager.SaveConfig = function(self, name)
+				local ok, err = pcall(origSave, self, name)
+				pcall(function()
+					Fluent:Notify({
+						Title    = ok and "Config Saved" or "Save Failed",
+						Content  = ok and ("\"" .. tostring(name) .. "\" saved.") or tostring(err),
+						Duration = 3,
+					})
+				end)
+				return ok, err
+			end
+		end
+		local origAL = SaveManager.SetAutoloadConfig
+		if origAL then
+			SaveManager.SetAutoloadConfig = function(self, name)
+				local ok, err = pcall(origAL, self, name)
+				pcall(function()
+					Fluent:Notify({
+						Title    = "Autoload Set",
+						Content  = "\"" .. tostring(name or "none") .. "\" will auto-apply on load.",
+						Duration = 4,
+					})
+				end)
+				return ok, err
+			end
+		end
+	end)
 
 	InterfaceManager:LoadSettings()
 	local ifacePre = InterfaceManager.Settings
 
-	local ifaceOptionsExist = typeof(isfile) == "function" and isfile("MyaHub/options.json")
+	local ifaceOptionsExist = typeof(isfile) == "function" and isfile("Mya/Hub/options.json")
 
-	local layoutFile = "MyaHub/layout.json"
+	local layoutFile = "Mya/Hub/layout.json"
 	local function readLayoutEarly(): any
 		if typeof(readfile) ~= "function" then
 			return nil
@@ -228,19 +260,19 @@ return function(BASE_URL: string, config: { [string]: any })
 		SaveManager:SetLibrary(Fluent)
 		InterfaceManager:SetLibrary(Fluent)
 		FloatingButtonManager:SetLibrary(Fluent)
-		InterfaceManager:SetFolder("MyaHub")
-		SaveManager:SetFolder("MyaHub/Config")
-		FloatingButtonManager:SetFolder("MyaHub/Floating")
+		InterfaceManager:SetFolder("Mya/Hub")
+		SaveManager:SetFolder("Mya/Hub/Config")
+		FloatingButtonManager:SetFolder("Mya/Hub/Floating")
 		InterfaceManager:LoadSettings()
 		ifacePre = InterfaceManager.Settings
-		ifaceOptionsExist = typeof(isfile) == "function" and isfile("MyaHub/options.json")
+		ifaceOptionsExist = typeof(isfile) == "function" and isfile("Mya/Hub/options.json")
 	end
 
 	local Window = Fluent:CreateWindow(windowOpts)
 	if not Window or typeof(Window.AddTab) ~= "function" then
 		recreateFluentAndManagers()
 		ifacePre = InterfaceManager.Settings
-		ifaceOptionsExist = typeof(isfile) == "function" and isfile("MyaHub/options.json")
+		ifaceOptionsExist = typeof(isfile) == "function" and isfile("Mya/Hub/options.json")
 		windowOpts.Theme = pickFluentTheme(ifacePre.Theme)
 		windowOpts.Acrylic = ifaceOptionsExist and ifacePre.Acrylic == true or false
 		do
@@ -275,7 +307,8 @@ return function(BASE_URL: string, config: { [string]: any })
 			return
 		end
 		if typeof(makefolder) == "function" then
-			pcall(makefolder, "MyaHub")
+			pcall(makefolder, "Mya")
+			pcall(makefolder, "Mya/Hub")
 		end
 		local okEncode, payload = pcall(function()
 			return HttpService:JSONEncode(layout)
@@ -630,14 +663,14 @@ return function(BASE_URL: string, config: { [string]: any })
 				pcall(function()
 			if fInterface then
 				fInterface:SetLibrary(fLib)
-				fInterface:SetFolder("MyaUniversalFallback")
+				fInterface:SetFolder("Mya/Universal/Fallback")
 				fInterface:BuildInterfaceSection(settingsTab)
 			end
 		end)
 		pcall(function()
 			if fSave then
 				fSave:SetLibrary(fLib)
-				fSave:SetFolder("MyaUniversalFallback/Config")
+				fSave:SetFolder("Mya/Universal/Fallback/Config")
 				fSave:BuildConfigSection(settingsTab)
 			end
 		end)

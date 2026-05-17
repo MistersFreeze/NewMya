@@ -12,7 +12,7 @@ Read in order for a full picture, or jump by topic.
 | 06 | [06_loader_and_hub.md](06_loader_and_hub.md) | Bootstrap order, hub lifecycle |
 | 07 | [07_gui_loader.md](07_gui_loader.md) | Fluent Modded standard for loader/universal GUI |
 | 08 | [08_gui_in_game.md](08_gui_in_game.md) | In-game UI standards and Fluent usage |
-| 09 | [09_libs.md](09_libs.md) | Shared library roles |
+| 09 | [09_libs.md](09_libs.md) | Shared library roles (incl. `lib/widgets.luau`) |
 | 10 | [10_workflows.md](10_workflows.md) | Add game, host, test, document |
 | 11 | [11_critical_constraints.md](11_critical_constraints.md) | Legal, URLs, secrets, UI copy |
 | 12 | [12_hooks_and_extensions.md](12_hooks_and_extensions.md) | Hooks and extension points index |

@@ -25,7 +25,32 @@
       "Bash(Get-Content \"C:\\\\Users\\\\Lanzo\\\\Desktop\\\\New_Mya\\\\games\\\\Aftermath_112237800564065\\\\init.luau\")",
       "Bash(Measure-Object -Line)",
       "PowerShell(Get-Content *)",
-      "Bash(git *)"
+      "Bash(git *)",
+      "Read(//c/Users/Lanzo/AppData/Roaming/Madium/Workspace/Pro Script Dumper/**)",
+      "Bash(dir \"C:\\\\Users\\\\Lanzo\\\\AppData\\\\Roaming\\\\Madium\\\\Workspace\\\\Pro Script Dumper\\\\[112237800564065] Aftermath\")",
+      "Bash(findstr /i \"zombie npc infected mob enemy creature special disk cdrom beret grave\")",
+      "Bash(findstr /i \"NPCSpawn SpawnNPC SoldierZombie SpecialZombie MilitaryZombie\")",
+      "Bash(findstr /i \"NPCSpawn\")",
+      "Bash(findstr /i \"item.*world\\\\|world.*item\\\\|pickup\\\\|ItemWorld\\\\|WorldItem\\\\|DroppedItem\")",
+      "Bash(dir C:\\\\Users\\\\Lanzo\\\\Desktop\\\\New_Mya\\\\games *)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\Lanzo\\\\AppData\\\\Roaming\\\\Madium\\\\Workspace\\\\Pro Script Dumper\\\\[112237800564065] Aftermath\" -Recurse -Directory)",
+      "Bash(Select-Object -First 50 FullName)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\Lanzo\\\\Desktop\\\\MyaLoader\" -Recurse -Force)",
+      "Bash(Select-Object FullName, PSIsContainer)",
+      "Bash(Format-Table -AutoSize)",
+      "Bash(cmd *)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\Lanzo\\\\AppData\\\\Local\\\\Potassium\\\\workspace\\\\Pro Script Dumper\\\\[10266164381] Bloodlines Mains\" -Recurse -Force)",
+      "Bash(Sort-Object FullName)",
+      "Bash(Get-ChildItem *)",
+      "Bash(Measure-Object)",
+      "Bash(Select-Object -ExpandProperty Count)",
+      "Bash(Select-Object -First 20)",
+      "Bash(Select-String -Pattern \"\\\\.lua$\")",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\Lanzo\\\\AppData\\\\Local\\\\Potassium\\\\workspace\\\\Pro Script Dumper\\\\[10266164381] Bloodlines Mains\" | Where-Object { $_.Extension -eq \".lua\" } | Select-Object -ExpandProperty Name)",
+      "PowerShell(Get-ChildItem *)",
+      "PowerShell(Head *)"
     ]
-  }
+  },
+  "spinnerTipsEnabled": false,
+  "prefersReducedMotion": false
 }

@@ -51,17 +51,17 @@ return function(BASE_URL, config)
 	InterfaceManager:SetLibrary(Fluent)
 	if FloatingButtonManager then
 		FloatingButtonManager:SetLibrary(Fluent)
-		FloatingButtonManager:SetFolder("MyaUniversal/Floating")
+		FloatingButtonManager:SetFolder("Mya/Universal/Floating")
 	end
-	InterfaceManager:SetFolder("MyaUniversal")
-	SaveManager:SetFolder("MyaUniversal/Cfg")
+	InterfaceManager:SetFolder("Mya/Universal")
+	SaveManager:SetFolder("Mya/Universal/Cfg")
 
 	InterfaceManager:LoadSettings()
 	local ifacePre = InterfaceManager.Settings
 
 	-- ── Window layout persistence ─────────────────────────────────────────────────
 
-	local LAYOUT_FILE = "MyaUniversal/layout.json"
+	local LAYOUT_FILE = "Mya/Universal/layout.json"
 
 	local function readLayout()
 		if typeof(readfile) ~= "function" then return nil end
@@ -75,9 +75,10 @@ return function(BASE_URL, config)
 		if typeof(writefile) ~= "function" then return end
 		pcall(function()
 			if typeof(makefolder) == "function" then
-				pcall(makefolder, "MyaUniversal")
-				pcall(makefolder, "MyaUniversal/Cfg")
-				pcall(makefolder, "MyaUniversal/Floating")
+				pcall(makefolder, "Mya")
+				pcall(makefolder, "Mya/Universal")
+				pcall(makefolder, "Mya/Universal/Cfg")
+				pcall(makefolder, "Mya/Universal/Floating")
 			end
 			local payload = HttpService:JSONEncode({ sx = math.floor(w), sy = math.floor(h) })
 			writefile(LAYOUT_FILE, payload)
