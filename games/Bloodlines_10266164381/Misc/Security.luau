@@ -34,7 +34,7 @@ return function(ctx)
 	local _safeToggle  = false
 
 	local function isSafeBindActive()
-		if safeBindMode == "Always" then return true end  -- typo safety
+		if _safeBindMode == "Always" then return true end  -- fixed safeBindMode typo
 		local kv = _safeBind and _safeBind.Value
 		if not kv or kv == "None" or kv == "" or _safeBindMode == "Always" then return true end
 		if _safeBindMode == "Toggle" then return _safeToggle end
@@ -202,9 +202,12 @@ return function(ctx)
 		end)
 	end
 
-	local function kickSelf()
-		-- Can't truly kick self; teleport as a "leave" instead
-		serverHop()
+	local function kickSelf(staffName)
+		pcall(function()
+			localPlayer:Kick("Leaving server due to Staff Detection: " .. tostring(staffName))
+		end)
+		-- Fallback if direct Kick fails or is blocked
+		task.delay(0.5, serverHop)
 	end
 
 	local function handleModDetected(player, reason)
@@ -213,13 +216,13 @@ return function(ctx)
 		_notifiedMods[key] = true
 
 		if modResponse == "Notification" then
-			notify("Staff Detected", player.Name .. " — " .. reason, 10)
+			notify("⚠️ Staff Detected", player.Name .. " — " .. reason, 10)
 		elseif modResponse == "ServerHop" then
-			notify("Staff Detected", "Hopping server — " .. player.Name, 5)
+			notify("⚠️ Staff Detected", "Hopping server due to " .. player.Name, 5)
 			task.delay(1.5, serverHop)
 		elseif modResponse == "Kick" then
-			notify("Staff Detected", "Leaving server — " .. player.Name, 5)
-			task.delay(1.5, kickSelf)
+			notify("⚠️ Staff Detected", "Self-kicking due to " .. player.Name, 5)
+			task.delay(1.5, function() kickSelf(player.Name) end)
 		end
 	end
 
@@ -231,42 +234,119 @@ return function(ctx)
 				return
 			end
 		end
-		-- Check Settings for moderator rank
+
+		-- Check Settings folder and attributes for moderator ranks
 		local function scanSettings(char)
 			if not char then return end
 			local s = char:FindFirstChild("Settings")
 				   or (ReplicatedStorage:FindFirstChild("Settings") and ReplicatedStorage.Settings:FindFirstChild(player.Name))
 			if not s then return end
-			for _, v in ipairs(s:GetChildren()) do
+
+			local function evaluateValue(v)
 				local n = v.Name:lower()
 				if n == "moderator" or n == "ismod" or n == "rank" or n == "staff" then
 					local val = v.Value
 					if val and val ~= false and val ~= "" and val ~= 0 then
 						handleModDetected(player, "Rank: " .. tostring(val))
-						return
+						return true
+					end
+				end
+				return false
+			end
+
+			-- Check current values and attach watchers for dynamic updates
+			for _, v in ipairs(s:GetChildren()) do
+				if evaluateValue(v) then return end
+				local c = v.Changed:Connect(function()
+					evaluateValue(v)
+				end)
+				table.insert(_modConns, c)
+			end
+
+			-- Watch for new value children added dynamically
+			local childAdded = s.ChildAdded:Connect(function(child)
+				if evaluateValue(child) then return end
+				local c = child.Changed:Connect(function()
+					evaluateValue(child)
+				end)
+				table.insert(_modConns, c)
+			end)
+			table.insert(_modConns, childAdded)
+		end
+
+		-- Hook character added and dynamic attributes
+		local function onChar(char)
+			if not char then return end
+			task.spawn(scanSettings, char)
+
+			local function scanAttributes()
+				for k, v in pairs(char:GetAttributes()) do
+					local kl = k:lower()
+					if kl:find("mod") or kl:find("staff") or kl:find("rank") or kl:find("admin") then
+						if v and v ~= false and v ~= "" and v ~= 0 then
+							handleModDetected(player, "Attribute: " .. k .. "=" .. tostring(v))
+						end
+					end
+				end
+			end
+
+			scanAttributes()
+			local ac = char.AttributeChanged:Connect(scanAttributes)
+			table.insert(_modConns, ac)
+		end
+
+		if player.Character then task.spawn(onChar, player.Character) end
+		local rc; rc = player.CharacterAdded:Connect(function(char)
+			task.wait(1)
+			task.spawn(onChar, char)
+			if _notifiedMods[player.Name] then rc:Disconnect() end
+		end)
+		table.insert(_modConns, rc)
+
+		-- Check player model level attributes as well
+		local function scanPlayerAttributes()
+			for k, v in pairs(player:GetAttributes()) do
+				local kl = k:lower()
+				if kl:find("mod") or kl:find("staff") or kl:find("rank") or kl:find("admin") then
+					if v and v ~= false and v ~= "" and v ~= 0 then
+						handleModDetected(player, "PlayerAttribute: " .. k .. "=" .. tostring(v))
 					end
 				end
 			end
 		end
-		if player.Character then task.spawn(scanSettings, player.Character) end
-		local rc; rc = player.CharacterAdded:Connect(function(char)
-			task.wait(1); task.spawn(scanSettings, char)
-			if _notifiedMods[player.Name] then rc:Disconnect() end
-		end)
-		table.insert(_modConns, rc)
+
+		scanPlayerAttributes()
+		local pac = player.AttributeChanged:Connect(scanPlayerAttributes)
+		table.insert(_modConns, pac)
 	end
 
 	for _, p in ipairs(Players:GetPlayers()) do checkPlayer(p) end
 	table.insert(_modConns, Players.PlayerAdded:Connect(checkPlayer))
-	Players.PlayerRemoving:Connect(function(p) _notifiedMods[p.Name] = nil end)
+	
+	-- Store PlayerRemoving inside _modConns for clean unmount
+	local prConn = Players.PlayerRemoving:Connect(function(p)
+		_notifiedMods[p.Name] = nil
+	end)
+	table.insert(_modConns, prConn)
 
 	local modSec = securityTab:AddSection("Moderation Detection")
+	
 	modSec:AddDropdown("ModResponse", {
 		Title    = "Response to Staff",
 		Values   = { "Notification", "ServerHop", "Kick" },
 		Default  = "Notification",
 		NoSearch = true,
 		Callback = function(v) modResponse = v end,
+	})
+
+	modSec:AddButton({
+		Title    = "Test Staff Alert (Mock)",
+		Icon     = "solar/test-tube-bold",
+		Callback = function()
+			-- Temporarily reset tracking list so the test alert can be triggered repeatedly
+			_notifiedMods["MyaTestMod"] = nil
+			handleModDetected({ Name = "MyaTestMod" }, "Known Staff (TEST)")
+		end,
 	})
 
 	-- ── Update ────────────────────────────────────────────────────────────────────

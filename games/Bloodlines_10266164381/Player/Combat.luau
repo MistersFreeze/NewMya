@@ -12,7 +12,6 @@ return function(ctx)
 	local infChakra   = { enabled = false }
 	local autoSprint  = { enabled = false }
 	local allCooldowns = { enabled = false }
-	local highJump    = { enabled = false, multiplier = 3.0 }
 
 	local _noFallConns  = {}
 	local _stunConns    = {}
@@ -442,26 +441,6 @@ return function(ctx)
 		Callback = function(v) allCooldowns.enabled = v end,
 	})
 
-	-- ── High Jump ─────────────────────────────────────────────────────────────────
-	-- Modifies DoubleJumpMultiplier and TripleJumpMultiplier in the u98 GC table.
-	-- Default in-game value: 1.6. Higher = bigger jumps.
-
-	local jumpSec = playerTab:AddSection("High Jump")
-	jumpSec:AddToggle("HighJumpToggle", {
-		Title    = "High Jump",
-		Icon     = "solar/arrow-up-bold",
-		Default  = false,
-		Callback = function(v) highJump.enabled = v end,
-	})
-	jumpSec:AddSlider("HighJumpMultiplier", {
-		Title    = "Jump Multiplier",
-		Default  = 30,
-		Min      = 1,
-		Max      = 100,
-		Rounding = 0,
-		Callback = function(v) highJump.multiplier = v end,
-	})
-
 	-- ── Character lifecycle ────────────────────────────────────────────────────────
 
 	local charAddedConn = localPlayer.CharacterAdded:Connect(function(char)
@@ -552,26 +531,6 @@ return function(ctx)
 			local settings = char and char:FindFirstChild("Settings")
 			local mcd = settings and settings:FindFirstChild("MeleeCooldown")
 			if mcd and mcd.Value then pcall(function() mcd.Value = false end) end
-		end
-
-		-- High Jump: sets DoubleJumpMultiplier and TripleJumpMultiplier in u98.
-		-- Default game value is 1.6; higher = bigger air.
-		if highJump.enabled and _sprintState then
-			pcall(function()
-				local s = _sprintState
-				local m = highJump.multiplier
-				if type(s.DoubleJumpMultiplier) == "number" then s.DoubleJumpMultiplier = m end
-				if type(s.TripleJumpMultiplier) == "number" then s.TripleJumpMultiplier = m end
-				if type(s.JumpInterval)          == "number" then s.JumpInterval          = 0.05 end
-			end)
-		elseif not highJump.enabled and _sprintState then
-			-- Restore defaults when toggled off
-			pcall(function()
-				local s = _sprintState
-				if type(s.DoubleJumpMultiplier) == "number" then s.DoubleJumpMultiplier = 1.6 end
-				if type(s.TripleJumpMultiplier) == "number" then s.TripleJumpMultiplier = 1.6 end
-				if type(s.JumpInterval)          == "number" then s.JumpInterval          = 0.6 end
-			end)
 		end
 
 		-- Auto Sprint: activates whenever the character is moving in any direction.
