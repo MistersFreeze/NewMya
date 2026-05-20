@@ -21,8 +21,8 @@ return function(ctx)
 		showInfo   = true,
 		showBox    = true,
 		scaleText  = false,
-		bloodBar   = false,  -- second HP bar on right side of box
-		chakraBar  = false,  -- chakra bar below box
+		bloodBar   = false,
+		chakraBar  = false,
 	}
 	local npcEsp = {
 		enabled = false,
@@ -36,19 +36,15 @@ return function(ctx)
 		maxDist = 500,
 	}
 
-	-- ── O(1) player-character set ─────────────────────────────────────────────────
-	-- Keeps a dictionary of character models → true so isPlayerChar is O(1).
+	-- ── Player-character set ──────────────────────────────────────────────────────
 
-	-- Declared here so the _prConn closure below can safely reference it before
-	-- the full info-cache section initialises later in the file.
 	local _playerInfoCache = {}
-
-	local _playerChars = {}
+	local _playerChars     = {}
 
 	local function trackPlayer(p)
 		if p.Character then _playerChars[p.Character] = true end
-		p.CharacterAdded:Connect(function(c)   _playerChars[c] = true  end)
-		p.CharacterRemoving:Connect(function(c) _playerChars[c] = nil   end)
+		p.CharacterAdded:Connect(function(c)   _playerChars[c] = true end)
+		p.CharacterRemoving:Connect(function(c) _playerChars[c] = nil  end)
 	end
 	for _, p in ipairs(Players:GetPlayers()) do trackPlayer(p) end
 	local _paConn = Players.PlayerAdded:Connect(trackPlayer)
@@ -59,7 +55,7 @@ return function(ctx)
 
 	local function isPlayerChar(model) return _playerChars[model] == true end
 
-	-- ── Entity kind resolver (used once at add-time, not per frame) ───────────────
+	-- ── Entity kind resolver ──────────────────────────────────────────────────────
 
 	local function getEntityKind(model)
 		if not model:IsA("Model") then return nil end
@@ -71,47 +67,43 @@ return function(ctx)
 	end
 
 	local function getDisplayName(model)
-		local s   = model:FindFirstChild("Settings")
-		local nv  = s and s:FindFirstChild("NPCName")
+		local s  = model:FindFirstChild("Settings")
+		local nv = s and s:FindFirstChild("NPCName")
 		if nv and typeof(nv.Value) == "string" and #nv.Value > 0 then return nv.Value end
 		return model.Name
 	end
 
 	-- ── Focal-length cache ────────────────────────────────────────────────────────
-	-- Recomputed only when the camera FOV or viewport size changes.
 
-	local _focalLen   = 0
-	local _lastFov    = 0
-	local _lastVpY    = 0
+	local _focalLen = 0
+	local _lastFov  = 0
+	local _lastVpY  = 0
 
 	local function getFocalLen(cam)
 		local fov = cam.FieldOfView
 		local vpY = cam.ViewportSize.Y
 		if fov ~= _lastFov or vpY ~= _lastVpY then
-			_lastFov    = fov
-			_lastVpY    = vpY
-			_focalLen   = (vpY * 0.5) / math.tan(math.rad(fov * 0.5))
+			_lastFov  = fov
+			_lastVpY  = vpY
+			_focalLen = (vpY * 0.5) / math.tan(math.rad(fov * 0.5))
 		end
 		return _focalLen
 	end
 
 	-- ── Drawing font state ────────────────────────────────────────────────────────
-	-- Maps Fluent/Roblox font names to Drawing.Fonts enum indices.
-	-- Synced once per second in the update loop.
 
-	local FONT_UI   = (typeof(Drawing) == "table" and Drawing.Fonts and Drawing.Fonts.UI)       or 0
-	local FONT_SYS  = (typeof(Drawing) == "table" and Drawing.Fonts and Drawing.Fonts.System)   or 1
+	local FONT_UI   = (typeof(Drawing) == "table" and Drawing.Fonts and Drawing.Fonts.UI)        or 0
+	local FONT_SYS  = (typeof(Drawing) == "table" and Drawing.Fonts and Drawing.Fonts.System)    or 1
 	local FONT_MONO = (typeof(Drawing) == "table" and Drawing.Fonts and Drawing.Fonts.Monospace) or 3
 
 	local FONT_MAP = {
-		GothamSSm    = FONT_UI,  Gotham        = FONT_UI,  GothamMedium  = FONT_UI,
-		GothamBold   = FONT_UI,  Roboto        = FONT_UI,  Ubuntu        = FONT_UI,
-		SourceSans   = FONT_UI,  SourceSansBold= FONT_UI,
-		Arial        = FONT_SYS, ArialBold     = FONT_SYS,
-		Code         = FONT_MONO,RobotoMono    = FONT_MONO,
+		GothamSSm = FONT_UI, Gotham = FONT_UI, GothamMedium = FONT_UI, GothamBold = FONT_UI,
+		Roboto = FONT_UI, Ubuntu = FONT_UI, SourceSans = FONT_UI, SourceSansBold = FONT_UI,
+		Arial = FONT_SYS, ArialBold = FONT_SYS,
+		Code = FONT_MONO, RobotoMono = FONT_MONO,
 	}
 
-	local _curFont     = FONT_UI
+	local _curFont      = FONT_UI
 	local _fontSyncTick = 0
 
 	local function readFluentFont()
@@ -123,13 +115,8 @@ return function(ctx)
 		return FONT_MAP[name] or FONT_UI
 	end
 
-	-- Apply current font to every text Drawing in a drawings table.
-	-- Tries both the Drawing.Fonts enum value and the raw integer index since
-	-- different executor versions expose the property differently.
 	local function applyFont(drawings, fontIdx)
-		for _, d in pairs(drawings) do
-			pcall(function() d.Font = fontIdx end)
-		end
+		for _, d in pairs(drawings) do pcall(function() d.Font = fontIdx end) end
 	end
 
 	-- ── Drawing factories ─────────────────────────────────────────────────────────
@@ -146,10 +133,8 @@ return function(ctx)
 
 	local function newSquare(filled, zi)
 		local s = Drawing.new("Square")
-		s.Filled    = filled or false
-		s.Thickness = 1
-		s.ZIndex    = zi or 1
-		s.Visible   = false
+		s.Filled = filled or false; s.Thickness = 1
+		s.ZIndex = zi or 1; s.Visible = false
 		return s
 	end
 
@@ -162,10 +147,8 @@ return function(ctx)
 			info     = newText(11),
 			hpBg     = newSquare(true, 1),
 			hpBar    = newSquare(true, 2),
-			-- Blood bar (right side, mirrors hpBar in red)
 			bloodBg  = newSquare(true, 1),
 			bloodBar = newSquare(true, 2),
-			-- Chakra bar (below box, blue)
 			chakraBg  = newSquare(true, 1),
 			chakraBar = newSquare(true, 2),
 		}
@@ -176,62 +159,29 @@ return function(ctx)
 		return d
 	end
 
-	-- Minimum rendered box height (px) below which text labels are hidden.
-	-- Prevents unreadable overlapping text on far-away targets.
 	local TEXT_MIN_H = 13
 
 	-- ── Player info cache ─────────────────────────────────────────────────────────
-	-- All fields confirmed from dump analysis:
-	--   Settings.Bloodline       (StringValue) — clan name
-	--   Settings.Awakened        (StringValue) — active awakening/eye string e.g. "Shisui's Mangekyo"
-	--   Settings.RecentDamage    (NumberValue) — 0 = sub available, >0 = gated
-	--   Settings.CurrentSkill    (StringValue) — "Chakra Sense" when sensing
-	--   char.Torso.ChakraSense   (Part)        — present while sensing
-	--   Freshie: empty Bloodline or plant-like child on character
 
-	local INFO_TTL = 1.5
+	local INFO_TTL     = 1.5
+	local FRESHIE_PATS = { "vine","plant","sprout","leaf","freshie","sapling","flower","grass","twig" }
 
-	local FRESHIE_PATS = { "vine", "plant", "sprout", "leaf", "freshie", "sapling", "flower", "grass", "twig" }
-
-	-- extractPlayerInfo takes the Player object (not just Character) so it can
-	-- check both char.Settings (local replicated copy) AND
-	-- ReplicatedStorage.Settings[playerName] (server-authoritative settings).
-	-- From the dump, other players' bloodline / awakened / skill state lives in
-	-- ReplicatedStorage.Settings — char.Settings may be empty or partial for
-	-- remote players.
 	local function extractPlayerInfo(player)
-		local out = {
-			bloodline  = nil,
-			awakening  = nil,
-			sub        = nil,
-			sensing    = false,
-			freshie    = false,
-			chakraPct  = nil,   -- 0-1 chakra fraction, nil if unknown
-		}
+		local out = { bloodline = nil, awakening = nil, sub = nil, sensing = false, freshie = false, chakraPct = nil }
 		if not player then return out end
 		local char = player.Character
 		if not char then return out end
 
-		-- Build a priority list of Settings objects to try.
-		-- ReplicatedStorage.Settings[name] is the authoritative source for remote players.
 		local rsRoot     = ReplicatedStorage:FindFirstChild("Settings")
 		local rsSettings = rsRoot and rsRoot:FindFirstChild(player.Name)
 		local charSettings = char:FindFirstChild("Settings")
 
-		-- Helper: read a child from any available settings object.
 		local function findInSettings(childName)
-			if rsSettings then
-				local v = rsSettings:FindFirstChild(childName)
-				if v then return v end
-			end
-			if charSettings then
-				local v = charSettings:FindFirstChild(childName)
-				if v then return v end
-			end
+			if rsSettings then local v = rsSettings:FindFirstChild(childName); if v then return v end end
+			if charSettings then local v = charSettings:FindFirstChild(childName); if v then return v end end
 			return nil
 		end
 
-		-- Bloodline — no field or empty value = freshie (no clan yet)
 		local bl = findInSettings("Bloodline")
 		if bl and typeof(bl.Value) == "string" then
 			local blVal = bl.Value
@@ -241,37 +191,23 @@ return function(ctx)
 				out.freshie = true
 			end
 		else
-			-- Bloodline field missing = new player without a clan
 			out.freshie = true
 		end
 
-		-- Awakened/Eye state (confirmed from dump: Settings.Awakened StringValue)
 		local awk = findInSettings("Awakened")
-		if awk and typeof(awk.Value) == "string" and awk.Value ~= "" then
-			out.awakening = awk.Value
-		end
+		if awk and typeof(awk.Value) == "string" and awk.Value ~= "" then out.awakening = awk.Value end
 
-		-- Sub availability via RecentDamage
 		local rd = findInSettings("RecentDamage")
-		if rd and (rd:IsA("NumberValue") or rd:IsA("IntValue")) then
-			out.sub = (rd.Value == 0)
-		end
+		if rd and (rd:IsA("NumberValue") or rd:IsA("IntValue")) then out.sub = (rd.Value == 0) end
 
-		-- CS sensing via CurrentSkill
 		local cs = findInSettings("CurrentSkill")
-		if cs and typeof(cs.Value) == "string" then
-			out.sensing = (cs.Value == "Chakra Sense")
-		end
+		if cs and typeof(cs.Value) == "string" then out.sensing = (cs.Value == "Chakra Sense") end
 
-		-- Also check Torso for active ChakraSense part
 		if not out.sensing then
 			local torso = char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
-			if torso and torso:FindFirstChild("ChakraSense") then
-				out.sensing = true
-			end
+			if torso and torso:FindFirstChild("ChakraSense") then out.sensing = true end
 		end
 
-		-- Chakra percentage: scan Settings for chakra / maxChakra values
 		do
 			local c  = findInSettings("chakra") or findInSettings("Chakra")
 			local mc = findInSettings("maxChakra") or findInSettings("MaxChakra")
@@ -281,15 +217,11 @@ return function(ctx)
 			end
 		end
 
-		-- Freshie detection: scan character children for plant/vine visual
 		if not out.freshie then
 			for _, child in ipairs(char:GetChildren()) do
 				local n = child.Name:lower()
 				for _, pat in ipairs(FRESHIE_PATS) do
-					if n:find(pat, 1, true) then
-						out.freshie = true
-						break
-					end
+					if n:find(pat, 1, true) then out.freshie = true; break end
 				end
 				if out.freshie then break end
 			end
@@ -302,7 +234,7 @@ return function(ctx)
 		local now    = tick()
 		local cached = _playerInfoCache[player]
 		if cached and (now - cached.t) < INFO_TTL then return cached.d end
-		local d = extractPlayerInfo(player)    -- pass player, not just character
+		local d = extractPlayerInfo(player)
 		_playerInfoCache[player] = { d = d, t = now }
 		return d
 	end
@@ -311,15 +243,22 @@ return function(ctx)
 		for _, v in pairs(d) do pcall(function() v:Remove() end) end
 	end
 
+	-- Guard: only write Visible=false when it's actually true.
+	-- Prevents hammering the Drawing API with redundant writes every frame
+	-- for entities that are already hidden.
 	local function hideDrawings(d)
-		for _, v in pairs(d) do v.Visible = false end
+		for _, v in pairs(d) do
+			if v.Visible then v.Visible = false end
+		end
 	end
 
 	-- ── Active ESP tables ─────────────────────────────────────────────────────────
+	-- Each entry carries a `shown` boolean. We only call hideDrawings on the frame
+	-- the entry transitions from shown → hidden, not on every subsequent frame.
 
 	local activeESPs = {
-		players = {},   -- [Player] = { drawings, respawnConn }
-		world   = {},   -- [Model]  = { kind, hum, displayName, drawings, conns }
+		players = {},
+		world   = {},
 	}
 
 	-- ── Player ESP management ─────────────────────────────────────────────────────
@@ -337,8 +276,10 @@ return function(ctx)
 		local entry = {
 			drawings    = makeDrawings(),
 			respawnConn = nil,
+			shown       = false,  -- true while drawings are visible
+			lastDistM   = -1,     -- cached rounded distance for string dedup
+			lastDistTxt = "",
 		}
-		-- Init the static dark background for hp bar
 		entry.drawings.hpBg.Color = Color3.fromRGB(30, 30, 30)
 		activeESPs.players[player] = entry
 
@@ -351,7 +292,7 @@ return function(ctx)
 	for _, p in ipairs(Players:GetPlayers()) do
 		if p ~= localPlayer then addPlayerESP(p) end
 	end
-	local _pAddConn = Players.PlayerAdded:Connect(function(p)   addPlayerESP(p)   end)
+	local _pAddConn = Players.PlayerAdded:Connect(function(p) addPlayerESP(p) end)
 	local _pRemConn = Players.PlayerRemoving:Connect(function(p) removePlayerESP(p) end)
 
 	-- ── World ESP management ──────────────────────────────────────────────────────
@@ -366,8 +307,8 @@ return function(ctx)
 
 	local function addWorldESP(model, kind)
 		if activeESPs.world[model] then return end
-		local hum  = model:FindFirstChildWhichIsA("Humanoid")
-		local d    = makeDrawings()
+		local hum = model:FindFirstChildWhichIsA("Humanoid")
+		local d   = makeDrawings()
 		d.hpBg.Color = Color3.fromRGB(30, 30, 30)
 
 		local entry = {
@@ -376,16 +317,15 @@ return function(ctx)
 			displayName = getDisplayName(model),
 			drawings    = d,
 			conns       = {},
+			shown       = false,
 		}
 		activeESPs.world[model] = entry
 
-		-- Reactive cleanup: remove when model is parented out of the game.
 		local ancestryConn = model.AncestryChanged:Connect(function(_, parent)
 			if not parent then removeWorldESP(model) end
 		end)
 		table.insert(entry.conns, ancestryConn)
 
-		-- Cleanup when the mob/NPC dies.
 		if hum then
 			local diedConn = hum.Died:Connect(function()
 				task.delay(2, function() removeWorldESP(model) end)
@@ -402,12 +342,7 @@ return function(ctx)
 		if kind then addWorldESP(obj, kind) end
 	end
 
-	-- Initial scan of existing workspace children.
-	for _, obj in ipairs(Workspace:GetChildren()) do
-		tryAddWorldEntity(obj)
-	end
-
-	-- Watch for entities added while running.
+	for _, obj in ipairs(Workspace:GetChildren()) do tryAddWorldEntity(obj) end
 	local _wsAddConn = Workspace.ChildAdded:Connect(function(obj)
 		task.defer(tryAddWorldEntity, obj)
 	end)
@@ -494,113 +429,51 @@ return function(ctx)
 	end
 	local function restoreFullBright()
 		if _origGlobalShadows ~= nil then Lighting.GlobalShadows = _origGlobalShadows; _origGlobalShadows = nil end
-		if _origAmbient            then Lighting.Ambient = _origAmbient;       _origAmbient = nil end
+		if _origAmbient             then Lighting.Ambient = _origAmbient;              _origAmbient = nil end
 	end
 
 	-- ── UI Sections ───────────────────────────────────────────────────────────────
 
 	local playerSec = visualsTab:AddSection("Player ESP")
-	playerSec:AddToggle("PlayerESPEnabled", {
-		Title = "Enable", Icon = "solar/user-bold", Default = false,
-		Callback = function(v) playerEsp.enabled = v end,
-	})
-	playerSec:AddColorpicker("PlayerESPColor", {
-		Title = "Color", Default = playerEsp.color,
-		Callback = function(v) playerEsp.color = v end,
-	})
-	playerSec:AddToggle("PlayerESPName", {
-		Title = "Name", Default = true,
-		Callback = function(v) playerEsp.name = v end,
-	})
-	playerSec:AddToggle("PlayerESPDistance", {
-		Title = "Distance", Default = true,
-		Callback = function(v) playerEsp.distance = v end,
-	})
-	playerSec:AddToggle("PlayerESPHealth", {
-		Title = "Health Bar", Default = false,
-		Callback = function(v) playerEsp.health = v end,
-	})
-	playerSec:AddToggle("PlayerESPClan", {
-		Title = "Show Clan", Default = true,
-		Callback = function(v) playerEsp.showClan = v end,
-	})
-	playerSec:AddToggle("PlayerESPInfo", {
-		Title = "Show Info (Eyes / Sub)", Default = true,
-		Callback = function(v) playerEsp.showInfo = v end,
-	})
-	playerSec:AddToggle("PlayerESPShowBox", {
-		Title = "Show Box", Default = true,
-		Callback = function(v) playerEsp.showBox = v end,
-	})
-	playerSec:AddToggle("PlayerESPBloodBar", {
-		Title = "Blood Bar", Default = false,
-		Callback = function(v) playerEsp.bloodBar = v end,
-	})
-	playerSec:AddToggle("PlayerESPChakraBar", {
-		Title = "Chakra Bar", Default = false,
-		Callback = function(v) playerEsp.chakraBar = v end,
-	})
-	playerSec:AddToggle("PlayerESPScaleText", {
-		Title = "Scale Text at Distance",
-		Default = false,
-		Callback = function(v) playerEsp.scaleText = v end,
-	})
-	playerSec:AddSlider("PlayerESPMaxDist", {
-		Title = "Max Distance", Default = 1000, Min = 100, Max = 3000, Rounding = 0,
-		Callback = function(v) playerEsp.maxDist = v end,
-	})
+	playerSec:AddToggle("PlayerESPEnabled",  { Title = "Enable",                   Icon = "solar/user-bold",                Default = false, Callback = function(v) playerEsp.enabled   = v end })
+	playerSec:AddColorpicker("PlayerESPColor", { Title = "Color",                  Default = playerEsp.color,               Callback = function(v) playerEsp.color      = v end })
+	playerSec:AddToggle("PlayerESPName",     { Title = "Name",                      Default = true,                          Callback = function(v) playerEsp.name       = v end })
+	playerSec:AddToggle("PlayerESPDistance", { Title = "Distance",                  Default = true,                          Callback = function(v) playerEsp.distance   = v end })
+	playerSec:AddToggle("PlayerESPHealth",   { Title = "Health Bar",                Default = false,                         Callback = function(v) playerEsp.health     = v end })
+	playerSec:AddToggle("PlayerESPClan",     { Title = "Show Clan",                 Default = true,                          Callback = function(v) playerEsp.showClan   = v end })
+	playerSec:AddToggle("PlayerESPInfo",     { Title = "Show Info (Eyes / Sub)",    Default = true,                          Callback = function(v) playerEsp.showInfo   = v end })
+	playerSec:AddToggle("PlayerESPShowBox",  { Title = "Show Box",                  Default = true,                          Callback = function(v) playerEsp.showBox    = v end })
+	playerSec:AddToggle("PlayerESPBloodBar", { Title = "Blood Bar",                 Default = false,                         Callback = function(v) playerEsp.bloodBar   = v end })
+	playerSec:AddToggle("PlayerESPChakraBar",{ Title = "Chakra Bar",                Default = false,                         Callback = function(v) playerEsp.chakraBar  = v end })
+	playerSec:AddToggle("PlayerESPScaleText",{ Title = "Scale Text at Distance",    Default = false,                         Callback = function(v) playerEsp.scaleText  = v end })
+	playerSec:AddSlider("PlayerESPMaxDist",  { Title = "Max Distance", Default = 1000, Min = 100, Max = 3000, Rounding = 0,  Callback = function(v) playerEsp.maxDist    = v end })
 
 	local npcSec = visualsTab:AddSection("NPC ESP")
-	npcSec:AddToggle("NPCESPEnabled", {
-		Title = "Enable", Icon = "solar/user-speak-bold", Default = false,
-		Callback = function(v) npcEsp.enabled = v end,
-	})
-	npcSec:AddColorpicker("NPCESPColor", {
-		Title = "Color", Default = npcEsp.color,
-		Callback = function(v) npcEsp.color = v end,
-	})
-	npcSec:AddSlider("NPCESPMaxDist", {
-		Title = "Max Distance", Default = 500, Min = 50, Max = 5000, Rounding = 0,
-		Callback = function(v) npcEsp.maxDist = v end,
-	})
+	npcSec:AddToggle("NPCESPEnabled",  { Title = "Enable", Icon = "solar/user-speak-bold", Default = false, Callback = function(v) npcEsp.enabled = v end })
+	npcSec:AddColorpicker("NPCESPColor", { Title = "Color", Default = npcEsp.color,        Callback = function(v) npcEsp.color   = v end })
+	npcSec:AddSlider("NPCESPMaxDist",  { Title = "Max Distance", Default = 500, Min = 50, Max = 5000, Rounding = 0, Callback = function(v) npcEsp.maxDist = v end })
 
 	local mobSec = visualsTab:AddSection("Mob ESP")
-	mobSec:AddToggle("MobESPEnabled", {
-		Title = "Enable", Icon = "solar/danger-bold", Default = false,
-		Callback = function(v) mobEsp.enabled = v end,
-	})
-	mobSec:AddColorpicker("MobESPColor", {
-		Title = "Color", Default = mobEsp.color,
-		Callback = function(v) mobEsp.color = v end,
-	})
-	mobSec:AddToggle("MobESPHealth", {
-		Title = "Health Bar", Default = false,
-		Callback = function(v) mobEsp.health = v end,
-	})
-	mobSec:AddSlider("MobESPMaxDist", {
-		Title = "Max Distance", Default = 500, Min = 50, Max = 5000, Rounding = 0,
-		Callback = function(v) mobEsp.maxDist = v end,
-	})
+	mobSec:AddToggle("MobESPEnabled",  { Title = "Enable", Icon = "solar/danger-bold", Default = false, Callback = function(v) mobEsp.enabled = v end })
+	mobSec:AddColorpicker("MobESPColor", { Title = "Color", Default = mobEsp.color,   Callback = function(v) mobEsp.color   = v end })
+	mobSec:AddToggle("MobESPHealth",   { Title = "Health Bar", Default = false,        Callback = function(v) mobEsp.health  = v end })
+	mobSec:AddSlider("MobESPMaxDist",  { Title = "Max Distance", Default = 500, Min = 50, Max = 5000, Rounding = 0, Callback = function(v) mobEsp.maxDist = v end })
 
 	local envSec = visualsTab:AddSection("Environment")
-	envSec:AddToggle("NoFog",      { Title = "Remove Fog",  Icon = "solar/cloud-bold",         Default = false, Callback = function(v) if v then applyNoFog()      else restoreFog()      end end })
-	envSec:AddToggle("NoRain",     { Title = "Remove Rain", Icon = "solar/cloud-drizzle-bold", Default = false, Callback = function(v) if v then applyNoRain()     else restoreRain()     end end })
-	envSec:AddToggle("NoSnow",     { Title = "Remove Snow", Icon = "solar/snowflake-bold",     Default = false, Callback = function(v) if v then applyNoSnow()     else restoreSnow()     end end })
+	envSec:AddToggle("NoFog",      { Title = "Remove Fog",  Icon = "solar/cloud-bold",         Default = false, Callback = function(v) if v then applyNoFog()      else restoreFog()        end end })
+	envSec:AddToggle("NoRain",     { Title = "Remove Rain", Icon = "solar/cloud-drizzle-bold", Default = false, Callback = function(v) if v then applyNoRain()     else restoreRain()       end end })
+	envSec:AddToggle("NoSnow",     { Title = "Remove Snow", Icon = "solar/snowflake-bold",     Default = false, Callback = function(v) if v then applyNoSnow()     else restoreSnow()       end end })
 	envSec:AddToggle("FullBright", { Title = "Fullbright",  Icon = "solar/sun-bold",           Default = false, Callback = function(v) if v then applyFullBright() else restoreFullBright() end end })
 
 	-- ── Render helpers ────────────────────────────────────────────────────────────
 
-	-- Renders a box + name + dist + optional health bar using the focal-length shortcut.
-	-- sp = Vector2 screen position of HRP, depth = Z depth (studs),
-	-- topOff/botOff = world studs above/below HRP for box edges.
 	local function renderBox(d, sp, depth, focalLen, topOff, botOff, color)
-		local topPx  = math.floor(topOff * focalLen / depth)
-		local botPx  = math.floor(botOff * focalLen / depth)
-		local h      = math.max(1, topPx + botPx)
-		local w      = math.max(1, math.floor(h * 0.55))
-		local x      = math.floor(sp.X)
-		local topY   = math.floor(sp.Y - topPx)
-
+		local topPx = math.floor(topOff * focalLen / depth)
+		local botPx = math.floor(botOff * focalLen / depth)
+		local h     = math.max(1, topPx + botPx)
+		local w     = math.max(1, math.floor(h * 0.55))
+		local x     = math.floor(sp.X)
+		local topY  = math.floor(sp.Y - topPx)
 		d.box.Size     = Vector2.new(w, h)
 		d.box.Position = Vector2.new(x - w * 0.5, topY)
 		d.box.Color    = color
@@ -610,13 +483,13 @@ return function(ctx)
 
 	local function renderHealthBar(d, x, topY, w, h, hpPct, visible)
 		if not visible then
-			d.hpBg.Visible = false
-			d.hpBar.Visible = false
+			if d.hpBg.Visible  then d.hpBg.Visible  = false end
+			if d.hpBar.Visible then d.hpBar.Visible = false end
 			return
 		end
-		local barW  = 3
-		local barX  = math.floor(x - w * 0.5) - barW - 2
-		local hpH   = math.max(1, math.floor(h * hpPct))
+		local barW = 3
+		local barX = math.floor(x - w * 0.5) - barW - 2
+		local hpH  = math.max(1, math.floor(h * hpPct))
 		d.hpBg.Size     = Vector2.new(barW, h)
 		d.hpBg.Position = Vector2.new(barX, topY)
 		d.hpBg.Visible  = true
@@ -626,46 +499,38 @@ return function(ctx)
 		d.hpBar.Visible  = true
 	end
 
-	-- ── Per-frame rendering ───────────────────────────────────────────────────────
+	-- Pre-allocated info-line parts buffer — reused every frame to avoid per-call allocation.
+	local _infoParts = {}
 
-	-- Reused table to track which players were rendered this frame.
-	-- Avoids allocating a new table every RenderStepped call.
-	local _frameDrawn = {}
+	local C_CLAN = Color3.fromRGB(190, 160, 220)
+	local C_INFO = Color3.fromRGB(210, 210, 210)
 
-	local C_CLAN = Color3.fromRGB(190, 160, 220)  -- soft muted purple for clan label
-	local C_INFO = Color3.fromRGB(210, 210, 210)  -- light grey for info line
-
-	local function renderPlayerESP(d, shared, info, focalLen)
-		-- Box (optional)
+	local function renderPlayerESP(d, shared, espEntry, info, focalLen)
 		if playerEsp.showBox then
 			renderBox(d, shared.rootSp, shared.depth, focalLen, 3.5, 3.0, playerEsp.color)
 		else
-			d.box.Visible = false
+			if d.box.Visible then d.box.Visible = false end
 		end
-		local x   = math.floor(shared.rootSp.X)
+
 		local topPx = math.floor(3.5 * focalLen / shared.depth)
 		local botPx = math.floor(3.0 * focalLen / shared.depth)
-		local h   = math.max(1, topPx + botPx)
-		local w   = math.max(1, math.floor(h * 0.55))
-		local topY = math.floor(shared.rootSp.Y - topPx)
+		local h     = math.max(1, topPx + botPx)
+		local w     = math.max(1, math.floor(h * 0.55))
+		local x     = math.floor(shared.rootSp.X)
+		local topY  = math.floor(shared.rootSp.Y - topPx)
 
-		-- Scale text size with distance when the option is enabled.
-		-- Further away → larger text so names stay readable even with tiny boxes.
 		local baseTextSize = 14
 		if playerEsp.scaleText then
 			local distFrac = math.clamp(shared.dist / math.max(playerEsp.maxDist, 1), 0, 1)
-			baseTextSize = math.floor(14 + distFrac * 10)  -- 14px close → 24px at max dist
+			baseTextSize = math.floor(14 + distFrac * 10)
 		end
 
-		-- Text is shown when: scale mode is on (always show), OR box is tall enough to read.
-		local textOk = playerEsp.scaleText or h >= TEXT_MIN_H
-
-		-- Name + clan gap depends on whether both labels are shown.
+		local textOk   = playerEsp.scaleText or h >= TEXT_MIN_H
 		local clanSize = math.max(9, math.floor(baseTextSize * 0.8))
 		local nameGap  = math.floor(baseTextSize * 1.2)
 		local clanGap  = math.floor(clanSize * 1.1)
+		local hasClan  = textOk and playerEsp.showClan and info and info.bloodline
 
-		local hasClan = textOk and playerEsp.showClan and info and info.bloodline
 		if playerEsp.name and textOk then
 			d.name.Text     = shared.name
 			d.name.Size     = baseTextSize
@@ -673,7 +538,7 @@ return function(ctx)
 			d.name.Position = Vector2.new(x, hasClan and (topY - nameGap - clanGap) or (topY - nameGap))
 			d.name.Visible  = true
 		else
-			d.name.Visible = false
+			if d.name.Visible then d.name.Visible = false end
 		end
 
 		if hasClan then
@@ -683,47 +548,48 @@ return function(ctx)
 			d.clan.Position = Vector2.new(x, topY - clanGap)
 			d.clan.Visible  = true
 		else
-			d.clan.Visible = false
+			if d.clan.Visible then d.clan.Visible = false end
 		end
 
 		local distSize = math.max(9, math.floor(baseTextSize * 0.9))
 		if playerEsp.distance and textOk then
-			d.dist.Text     = string.format("%.0f m", shared.dist)
+			-- Cache distance string: only reformat when rounded distance changes.
+			local distM = math.floor(shared.dist)
+			if distM ~= espEntry.lastDistM then
+				espEntry.lastDistM   = distM
+				espEntry.lastDistTxt = distM .. " m"
+			end
+			d.dist.Text     = espEntry.lastDistTxt
 			d.dist.Size     = distSize
 			d.dist.Color    = playerEsp.color
 			d.dist.Position = Vector2.new(x, topY + h + 4)
 			d.dist.Visible  = true
 		else
-			d.dist.Visible = false
+			if d.dist.Visible then d.dist.Visible = false end
 		end
 
-		-- Info line: awakening · sub · CS · Freshie
 		local infoSize = math.max(9, math.floor(baseTextSize * 0.8))
 		if playerEsp.showInfo and info and textOk then
-			local pieces = {}
-			if info.awakening  then pieces[#pieces+1] = info.awakening  end
-			if info.sub == false then pieces[#pieces+1] = "No Sub"      end
-			if info.sensing    then pieces[#pieces+1] = "CS"            end
-			if info.freshie    then pieces[#pieces+1] = "Freshie"       end
-			if #pieces > 0 then
-				d.info.Text     = table.concat(pieces, " · ")
+			table.clear(_infoParts)
+			if info.awakening  then _infoParts[#_infoParts+1] = info.awakening  end
+			if info.sub == false then _infoParts[#_infoParts+1] = "No Sub"      end
+			if info.sensing    then _infoParts[#_infoParts+1] = "CS"            end
+			if info.freshie    then _infoParts[#_infoParts+1] = "Freshie"       end
+			if #_infoParts > 0 then
+				d.info.Text     = table.concat(_infoParts, " · ")
 				d.info.Size     = infoSize
 				d.info.Color    = C_INFO
 				d.info.Position = Vector2.new(x, topY + h + 4 + distSize + 3)
 				d.info.Visible  = true
 			else
-				d.info.Visible = false
+				if d.info.Visible then d.info.Visible = false end
 			end
 		else
-			d.info.Visible = false
+			if d.info.Visible then d.info.Visible = false end
 		end
 
-		-- Left HP bar (existing)
 		renderHealthBar(d, x, topY, w, h, shared.hpPct, playerEsp.health and playerEsp.showBox)
 
-		-- Blood bar (right side): dark red fill proportional to HP.
-		-- Blood damage mirrors HP damage (server confirmed from dump).
-		-- Always dark red — visually distinct from the green/red HP bar on the left.
 		if playerEsp.bloodBar and playerEsp.showBox then
 			local barW      = 4
 			local barX      = math.floor(x + w * 0.5) + 3
@@ -734,21 +600,18 @@ return function(ctx)
 			if barH_fill > 0 then
 				d.bloodBar.Size     = Vector2.new(barW, barH_fill)
 				d.bloodBar.Position = Vector2.new(barX, topY)
-				d.bloodBar.Color    = Color3.fromRGB(160, 0, 0)  -- always dark red
+				d.bloodBar.Color    = Color3.fromRGB(160, 0, 0)
 				d.bloodBar.Visible  = true
 			else
-				d.bloodBar.Visible = false
+				if d.bloodBar.Visible then d.bloodBar.Visible = false end
 			end
 		else
-			d.bloodBg.Visible  = false
-			d.bloodBar.Visible = false
+			if d.bloodBg.Visible  then d.bloodBg.Visible  = false end
+			if d.bloodBar.Visible then d.bloodBar.Visible = false end
 		end
 
-		-- Chakra bar (below box): only renders when chakraPct data is available.
-		-- Backpack.chakra is not replicated for other players, so this only works
-		-- when the game exposes chakra in ReplicatedStorage.Settings[playerName].
 		if playerEsp.chakraBar then
-			local chakraPct = info and info.chakraPct   -- nil when unavailable
+			local chakraPct = info and info.chakraPct
 			if chakraPct and chakraPct >= 0 then
 				local barH2 = 4
 				local barY  = topY + h + (playerEsp.distance and (distSize + 8) or 4)
@@ -763,41 +626,36 @@ return function(ctx)
 					d.chakraBar.Color    = Color3.fromRGB(30, 100, 255)
 					d.chakraBar.Visible  = true
 				else
-					d.chakraBar.Visible = false
+					if d.chakraBar.Visible then d.chakraBar.Visible = false end
 				end
 			else
-				-- No chakra data available — hide both background and fill.
-				d.chakraBg.Visible  = false
-				d.chakraBar.Visible = false
+				if d.chakraBg.Visible  then d.chakraBg.Visible  = false end
+				if d.chakraBar.Visible then d.chakraBar.Visible = false end
 			end
 		else
-			d.chakraBg.Visible  = false
-			d.chakraBar.Visible = false
+			if d.chakraBg.Visible  then d.chakraBg.Visible  = false end
+			if d.chakraBar.Visible then d.chakraBar.Visible = false end
 		end
 	end
 
+	-- Returns true if drawn, false if should be hidden.
 	local function renderWorldESP(model, entry, camPos, cam, focalLen)
 		local cfg = entry.kind == "mob" and mobEsp or npcEsp
-		if not cfg.enabled then hideDrawings(entry.drawings); return end
-
+		if not cfg.enabled then return false end
 		local hum = entry.hum
-		if hum and hum.Health <= 0 then hideDrawings(entry.drawings); return end
+		if hum and hum.Health <= 0 then return false end
 
-		-- Use HRP or any BasePart for screen position.
-		local hrp = model:FindFirstChild("HumanoidRootPart")
-			     or model:FindFirstChildWhichIsA("BasePart")
-		if not hrp then hideDrawings(entry.drawings); return end
+		local hrp = model:FindFirstChild("HumanoidRootPart") or model:FindFirstChildWhichIsA("BasePart")
+		if not hrp then return false end
 
 		local dist = (hrp.Position - camPos).Magnitude
-		if dist > cfg.maxDist then hideDrawings(entry.drawings); return end
+		if dist > cfg.maxDist then return false end
 
 		local sp, onScreen = cam:WorldToViewportPoint(hrp.Position)
-		if not onScreen or sp.Z <= 0 then hideDrawings(entry.drawings); return end
+		if not onScreen or sp.Z <= 0 then return false end
 
 		local d = entry.drawings
-		-- NPCs/Mobs are roughly the same size as player characters.
 		local x, topY, w, h = renderBox(d, Vector2.new(sp.X, sp.Y), sp.Z, focalLen, 3.5, 3.0, cfg.color)
-
 		local textOk = h >= TEXT_MIN_H
 
 		d.name.Text     = entry.displayName
@@ -805,38 +663,56 @@ return function(ctx)
 		d.name.Position = Vector2.new(x, topY - 15)
 		d.name.Visible  = textOk
 
-		d.dist.Text     = string.format("%.0f m", dist)
+		local distM = math.floor(dist)
+		if distM ~= entry.lastDistM then
+			entry.lastDistM   = distM
+			entry.lastDistTxt = distM .. " m"
+		end
+		d.dist.Text     = entry.lastDistTxt
 		d.dist.Color    = cfg.color
 		d.dist.Position = Vector2.new(x, topY + h + 4)
 		d.dist.Visible  = textOk
 
-		-- Health bar for mobs
 		if entry.kind == "mob" and mobEsp.health and hum and hum.MaxHealth > 0 then
-			local max   = hum.MaxHealth
-			local hpPct = math.clamp(hum.Health / max, 0, 1)
-			renderHealthBar(d, x, topY, w, h, hpPct, true)
+			renderHealthBar(d, x, topY, w, h, math.clamp(hum.Health / hum.MaxHealth, 0, 1), true)
 		else
-			d.hpBg.Visible  = false
-			d.hpBar.Visible = false
+			if d.hpBg.Visible  then d.hpBg.Visible  = false end
+			if d.hpBar.Visible then d.hpBar.Visible = false end
 		end
+		return true
 	end
 
-	-- ── Main update (called every RenderStepped from init.luau) ──────────────────
+	-- ── World ESP frame throttle ──────────────────────────────────────────────────
+	-- World entities (mobs/NPCs) update every 3rd frame. Player ESP still updates
+	-- every frame since it uses pre-computed data from the shared render loop.
+
+	local _worldTick = 0
+
+	-- ── Main update ───────────────────────────────────────────────────────────────
+
+	local _frameDrawn = {}
 
 	local function update(data)
 		local cam = data.cam
 		if not cam then return end
 
+		local pEnabled = playerEsp.enabled
+		local wEnabled = npcEsp.enabled or mobEsp.enabled
+
+		-- When everything is off, do one pass to hide any lingering drawings then return.
+		if not pEnabled and not wEnabled then
+			for _, e in pairs(activeESPs.players) do
+				if e.shown then hideDrawings(e.drawings); e.shown = false end
+			end
+			for _, e in pairs(activeESPs.world) do
+				if e.shown then hideDrawings(e.drawings); e.shown = false end
+			end
+			return
+		end
+
 		local focalLen = getFocalLen(cam)
 
-		-- ── Player ESP ─────────────────────────────────────────────────────────────
-		-- Use the pre-computed player entries from the shared render loop.
-		-- No WorldToViewportPoint calls needed here.
-
-		table.clear(_frameDrawn)
-
-		-- Font sync: check once per second if the Fluent font changed and propagate
-		-- to all active Drawing.Text objects so ESP text matches the GUI font.
+		-- Font sync: once per second.
 		local now = tick()
 		if now - _fontSyncTick >= 1 then
 			_fontSyncTick = now
@@ -850,37 +726,55 @@ return function(ctx)
 
 		local _isWL = _G.MYA_BL_IsWL
 
-		if playerEsp.enabled then
+		-- ── Player ESP ─────────────────────────────────────────────────────────────
+
+		table.clear(_frameDrawn)
+
+		if pEnabled then
 			for _, shared in ipairs(data.players) do
 				local espEntry = activeESPs.players[shared.player]
 				if not espEntry then continue end
-				-- Whitelisted players: hide their ESP and skip rendering
 				if _isWL and _isWL(shared.player, "esp") then
-					hideDrawings(espEntry.drawings)
+					if espEntry.shown then hideDrawings(espEntry.drawings); espEntry.shown = false end
 					_frameDrawn[shared.player] = true
 					continue
 				end
 				if shared.onScreen and shared.depth > 0 and shared.dist <= playerEsp.maxDist then
-					renderPlayerESP(espEntry.drawings, shared, getPlayerInfo(shared.player), focalLen)
+					renderPlayerESP(espEntry.drawings, shared, espEntry, getPlayerInfo(shared.player), focalLen)
+					espEntry.shown = true
 					_frameDrawn[shared.player] = true
 				end
 			end
 		end
 
-		-- Hide any player whose drawings were not refreshed this frame.
+		-- Hide players not drawn this frame — only when transitioning shown → hidden.
 		for player, espEntry in pairs(activeESPs.players) do
-			if not _frameDrawn[player] then
+			if not _frameDrawn[player] and espEntry.shown then
 				hideDrawings(espEntry.drawings)
+				espEntry.shown = false
 			end
 		end
 
-		-- ── World ESP (NPC + Mob) ─────────────────────────────────────────────────
-		-- Entities are tracked via the event-driven cache above.
-		-- One WorldToViewportPoint call per entity per frame (down from three).
+		-- ── World ESP (throttled) ──────────────────────────────────────────────────
 
-		local camPos = cam.CFrame.Position
-		for model, entry in pairs(activeESPs.world) do
-			renderWorldESP(model, entry, camPos, cam, focalLen)
+		if wEnabled then
+			_worldTick = (_worldTick + 1) % 3
+			if _worldTick == 0 then
+				local camPos = cam.CFrame.Position
+				for model, entry in pairs(activeESPs.world) do
+					local rendered = renderWorldESP(model, entry, camPos, cam, focalLen)
+					if rendered then
+						entry.shown = true
+					elseif entry.shown then
+						hideDrawings(entry.drawings)
+						entry.shown = false
+					end
+				end
+			end
+		else
+			for _, entry in pairs(activeESPs.world) do
+				if entry.shown then hideDrawings(entry.drawings); entry.shown = false end
+			end
 		end
 	end
 
@@ -890,10 +784,8 @@ return function(ctx)
 		_paConn:Disconnect(); _prConn:Disconnect()
 		_pAddConn:Disconnect(); _pRemConn:Disconnect()
 		_wsAddConn:Disconnect()
-
 		for p in pairs(activeESPs.players) do removePlayerESP(p) end
 		for m in pairs(activeESPs.world)   do removeWorldESP(m)  end
-
 		restoreFog(); restoreRain(); restoreSnow(); restoreFullBright()
 	end
 

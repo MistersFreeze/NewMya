@@ -7,7 +7,9 @@ return function(ctx)
     local Workspace = ctx.Workspace
 
     local fly = { enabled = false, speed = 50, bodyVel = nil, bodyGyr = nil, conn = nil }
-    local noclip = { enabled = false }
+    local noclip     = { enabled = false }
+    local _noclipParts = {}   -- [BasePart] = originalCanCollide
+    local _noclipConns = {}
     local walkspeed = { enabled = false, speed = 50 }
     local jumppower = { enabled = false, power = 100 }
 
@@ -63,17 +65,39 @@ return function(ctx)
         end)
     end
 
-    -- Noclip logic (original simple implementation)
-    local _noclipParts = {}
-    local function refreshNoclipParts(char)
+    -- Noclip
+    local function startNoclip()
+        for _, c in ipairs(_noclipConns) do pcall(function() c:Disconnect() end) end
+        table.clear(_noclipConns)
         table.clear(_noclipParts)
+        local char = localPlayer.Character
         if not char then return end
         for _, v in ipairs(char:GetDescendants()) do
-            if v:IsA("BasePart") then _noclipParts[#_noclipParts + 1] = v end
+            if v:IsA("BasePart") then
+                _noclipParts[v] = v.CanCollide
+                pcall(function() v.CanCollide = false end)
+            end
         end
+        local c = char.DescendantAdded:Connect(function(v)
+            if v:IsA("BasePart") then
+                _noclipParts[v] = v.CanCollide
+                task.defer(function()
+                    if noclip.enabled and v.Parent then
+                        pcall(function() v.CanCollide = false end)
+                    end
+                end)
+            end
+        end)
+        table.insert(_noclipConns, c)
     end
-    local function applyNoclip()
-        for _, part in ipairs(_noclipParts) do pcall(function() part.CanCollide = false end) end
+
+    local function stopNoclip()
+        for _, c in ipairs(_noclipConns) do pcall(function() c:Disconnect() end) end
+        table.clear(_noclipConns)
+        for part, orig in pairs(_noclipParts) do
+            pcall(function() if part.Parent then part.CanCollide = orig end end)
+        end
+        table.clear(_noclipParts)
     end
 
     -- WalkSpeed & JumpPower
@@ -114,8 +138,21 @@ return function(ctx)
     flySec:AddSlider("FlySpeed", { Title = "Speed", Default = 50, Min = 10, Max = 1000, Rounding = 0, Callback = function(v) fly.speed = v end })
 
     local noclipSec = movementTab:AddSection("Noclip")
-    local noclipSwitch = noclipSec:AddToggle("NoclipSwitch", { Title = "Noclip", Icon = "solar/ghost-bold", Default = false, Callback = function(v) noclip.enabled = v end })
-    local noclipKb = noclipSec:AddKeybind("NoclipBind", { Title = "Bind", Mode = "Toggle", Default = "", Callback = function(v) noclip.enabled = v; pcall(function() noclipSwitch:SetValue(v) end) end })
+    local noclipSwitch = noclipSec:AddToggle("NoclipSwitch", {
+        Title = "Noclip", Icon = "solar/ghost-bold", Default = false,
+        Callback = function(v)
+            noclip.enabled = v
+            if v then startNoclip() else stopNoclip() end
+        end,
+    })
+    local noclipKb = noclipSec:AddKeybind("NoclipBind", {
+        Title = "Bind", Mode = "Toggle", Default = "",
+        Callback = function(v)
+            noclip.enabled = v
+            if v then startNoclip() else stopNoclip() end
+            pcall(function() noclipSwitch:SetValue(v) end)
+        end,
+    })
 
     local wsSec = movementTab:AddSection("Walk Speed")
     local wsSwitch = wsSec:AddToggle("WalkSpeedSwitch", { Title = "Walk Speed", Icon = "solar/running-bold", Default = false, Callback = function(v) walkspeed.enabled = v; if v then applyWalkSpeed() else resetWalkSpeed() end end })
@@ -147,26 +184,29 @@ return function(ctx)
     end
 
     -- Char hooks
-    local charAddedConn = localPlayer.CharacterAdded:Connect(function(char)
+    local charAddedConn = localPlayer.CharacterAdded:Connect(function()
         if fly.enabled then task.delay(0.5, enableFly) end
         if walkspeed.enabled then task.delay(0.5, applyWalkSpeed) end
         if jumppower.enabled then task.delay(0.5, applyJumpPower) end
-        refreshNoclipParts(char)
-        char.DescendantAdded:Connect(function() refreshNoclipParts(char) end)
+        if noclip.enabled then task.delay(0.5, startNoclip) end
     end)
-    if localPlayer.Character then
-        refreshNoclipParts(localPlayer.Character)
-        localPlayer.Character.DescendantAdded:Connect(function() refreshNoclipParts(localPlayer.Character) end)
-    end
 
     local function update(data)
-        if noclip.enabled then applyNoclip() end
+        -- Keep CanCollide = false each frame to fight any game-side resets.
+        if noclip.enabled then
+            for part in pairs(_noclipParts) do
+                if part.Parent and part.CanCollide then
+                    pcall(function() part.CanCollide = false end)
+                end
+            end
+        end
         if walkspeed.enabled then applyWalkSpeed() end
         if jumppower.enabled then applyJumpPower() end
     end
 
     local function unmount()
         disableFly()
+        stopNoclip()
         resetWalkSpeed()
         resetJumpPower()
         charAddedConn:Disconnect()

@@ -73,7 +73,8 @@
       "Bash(awk 'NR>=30500 && NR<=30530' \"ReplicatedStorage.GameManager \\(1_55066\\).lua\")",
       "Bash(awk 'NR>=30470 && NR<=30480' \"ReplicatedStorage.GameManager \\(1_55066\\).lua\")",
       "Bash(awk 'NR>=36280 && NR<=36350' \"ReplicatedStorage.GameManager \\(1_55066\\).lua\")",
-      "Bash(awk 'NR>=36240 && NR<=36290' \"ReplicatedStorage.GameManager \\(1_55066\\).lua\")"
+      "Bash(awk 'NR>=36240 && NR<=36290' \"ReplicatedStorage.GameManager \\(1_55066\\).lua\")",
+      "Bash(powershell -Command \"Select-String -Path 'ReplicatedStorage.GameManager \\(1_55066\\).lua' -Pattern 'elseif u1357.*Rasengan|if u1357 == \\\\\"Rasengan' -Context 100,100 | head -500\")"
     ]
   },
   "spinnerTipsEnabled": false,
