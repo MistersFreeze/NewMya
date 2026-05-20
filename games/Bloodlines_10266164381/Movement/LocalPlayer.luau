@@ -63,7 +63,7 @@ return function(ctx)
         end)
     end
 
-    -- Noclip logic
+    -- Noclip logic (original simple implementation)
     local _noclipParts = {}
     local function refreshNoclipParts(char)
         table.clear(_noclipParts)

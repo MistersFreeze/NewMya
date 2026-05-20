@@ -65,8 +65,10 @@ return function(ctx)
                     local isAtSafeSpot = (hrp.Position - safeSpot.pos.Position).Magnitude < 10
                     if not isAtSafeSpot then
                         local needTp = false
+                        local _isWL  = _G.MYA_BL_IsWL
                         for _, p in ipairs(Players:GetPlayers()) do
                             if p ~= localPlayer and p.Character then
+                                if _isWL and _isWL(p, "proximity") then continue end
                                 local phrp = p.Character:FindFirstChild("HumanoidRootPart")
                                 if phrp then
                                     local dist = (phrp.Position - hrp.Position).Magnitude

@@ -182,27 +182,18 @@ return function(ctx)
 		if bindRegistry then
 			for _, entry in ipairs(bindRegistry) do
 				if not entry.getEnabled() then continue end
-				local key  = fmtKey(entry.getKey())
-				local mode = entry.getMode and entry.getMode() or "Always"
+				local key = fmtKey(entry.getKey())
+				-- Skip entries with no key bound.
+				if not key then continue end
 
-				-- Only show entries with a real key bound (skip "Always" mode / no key).
-				if not key and mode == "Always" then continue end
-
-				local displayKey = key or "—"
-				local active     = entry.isActive()
-				local dot        = active
-					and string.format('<font color="#78dc78">●</font>')
-					or  string.format('<font color="%s">○</font>', hm)
-				local keyTag = string.format('<font color="%s">[%s]</font>', ht, displayKey)
+				local active   = entry.isActive()
+				local nameCol  = active and ha or hm
+				local keyCol   = active and ha or ht
 				lines[#lines + 1] = string.format(
-					'<font color="%s">%s</font> %s %s',
-					ht, entry.displayName, keyTag, dot
+					'<font color="%s">%s </font><font color="%s">[%s]</font>',
+					nameCol, entry.displayName, keyCol, key
 				)
 			end
-		end
-
-		if #lines == 1 then
-			lines[2] = string.format('<font color="%s">No binds set</font>', hm)
 		end
 
 		label.Text = table.concat(lines, "\n")

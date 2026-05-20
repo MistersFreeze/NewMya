@@ -12,77 +12,48 @@ return function(ctx)
 
     local _conns = {}
 
-    local function normName(s) return s:lower():gsub("[%s_%-]", "") end
+    -- ── CS detection (confirmed from dump) ───────────────────────────────────────
+    -- Settings.CurrentSkill.Value == "Chakra Sense" → player is actively sensing.
+    -- char.Torso:FindFirstChild("ChakraSense") → visible particle part when sensing.
+    -- Both are reliable; the CurrentSkill check is primary.
 
-    -- Returns true when value is "truthy" for both BoolValue and NumberValue/IntValue.
-    local function isValActive(v)
-        if v:IsA("BoolValue") then return v.Value == true end
-        if v:IsA("NumberValue") or v:IsA("IntValue") then return v.Value ~= 0 end
-        return false
-    end
-
-    -- Patterns stripped of separators (normName applied).
-    local CS_PATS    = { "chakrasense","cs","chakrasensing","sensechakra","csability","hascs","cskill" }
-    local SENSE_PATS = { "sensing","usingsense","senseon","chakrasensing","sensechakra","cssensing",
-                         "activesense","senseactive","issensing","sensechakra","csSensing" }
-
-    local function scanValues(container, csP, senseP)
-        local hasCS, sensing = false, false
-        if not container then return hasCS, sensing end
-        for _, v in ipairs(container:GetDescendants()) do
-            local isBool = v:IsA("BoolValue")
-            local isNum  = v:IsA("NumberValue") or v:IsA("IntValue")
-            if not (isBool or isNum) then continue end
-            local n = normName(v.Name)
-            for _, pat in ipairs(csP) do
-                if n == pat then
-                    hasCS = true
-                    if isValActive(v) then sensing = true end
-                    break
-                end
-            end
-            for _, pat in ipairs(senseP) do
-                if n == pat and isValActive(v) then hasCS = true; sensing = true; break end
-            end
-        end
-        return hasCS, sensing
-    end
-
-    local function scanPlayerCS(player)
+    local function isSensing(player)
         local char = player.Character
-        local hasCS, sensing = false, false
+        if not char then return false end
 
-        if char then
-            -- Scan character's Settings folder and the character itself.
-            local h1, s1 = scanValues(char:FindFirstChild("Settings"), CS_PATS, SENSE_PATS)
-            local h2, s2 = scanValues(char, CS_PATS, SENSE_PATS)
-            hasCS   = h1 or h2
-            sensing = s1 or s2
-
-            -- Character attributes (some Bloodlines builds use SetAttribute).
-            pcall(function()
-                for k, v in pairs(char:GetAttributes()) do
-                    local n = normName(k)
-                    for _, pat in ipairs(CS_PATS) do
-                        if n == pat then hasCS = true; if v == true or v == 1 then sensing = true end; break end
-                    end
-                    for _, pat in ipairs(SENSE_PATS) do
-                        if n == pat and (v == true or v == 1) then hasCS = true; sensing = true; break end
-                    end
-                end
-            end)
+        -- Primary: Settings.CurrentSkill == "Chakra Sense"
+        local settings = char:FindFirstChild("Settings")
+        if settings then
+            local cs = settings:FindFirstChild("CurrentSkill")
+            if cs and typeof(cs.Value) == "string" and cs.Value == "Chakra Sense" then
+                return true
+            end
         end
 
-        -- ReplicatedStorage.Settings.<playerName>
+        -- Secondary: ChakraSense Part in Torso (present while ability is active)
+        local torso = char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
+        if torso and torso:FindFirstChild("ChakraSense") then
+            return true
+        end
+
+        -- Fallback: ReplicatedStorage.Settings path
         local rsS = ReplicatedStorage:FindFirstChild("Settings")
         local ps  = rsS and rsS:FindFirstChild(player.Name)
         if ps then
-            local h3, s3 = scanValues(ps, CS_PATS, SENSE_PATS)
-            hasCS   = hasCS   or h3
-            sensing = sensing or s3
+            local cs = ps:FindFirstChild("CurrentSkill")
+            if cs and typeof(cs.Value) == "string" and cs.Value == "Chakra Sense" then
+                return true
+            end
         end
 
-        return hasCS, sensing
+        return false
+    end
+
+    -- Kept for API compatibility; hasCS = sensing in this game (can't reliably
+    -- detect if a player owns the skill without them actively using it).
+    local function scanPlayerCS(player)
+        local sensing = isSensing(player)
+        return sensing, sensing
     end
 
     local function getNearestPlayer()
@@ -90,8 +61,10 @@ return function(ctx)
         local hrp  = char and char:FindFirstChild("HumanoidRootPart")
         if not hrp then return nil, 0 end
         local nearP, nearDist = nil, math.huge
+        local _isWL = _G.MYA_BL_IsWL
         for _, p in ipairs(Players:GetPlayers()) do
             if p == localPlayer then continue end
+            if _isWL and _isWL(p, "widgets") then continue end
             local c = p.Character
             local r = c and c:FindFirstChild("HumanoidRootPart")
             if not r then continue end
@@ -101,65 +74,50 @@ return function(ctx)
         return nearP, nearDist
     end
 
-    local function scrapeCSText(t, total, active)
-        local stripped = t:gsub("<[^>]+>", "")
-        if stripped:find("people with chakra") then
-            local n = stripped:match("people.-(%d+)") or stripped:match("(%d+)")
-            if n then local v = tonumber(n) or 0; if v > total then total = v end end
-        end
-        if stripped:find("active chakra") or stripped:find("using chakra") then
-            local n = stripped:match("chakra.-(%d+)") or stripped:match("(%d+)")
-            if n then local v = tonumber(n) or 0; if v > active then active = v end end
-        end
-        return total, active
-    end
+    -- CS counts with sticky set.
+    -- "CS Users" = players who were seen sensing recently (persists for CS_STICKY_TTL seconds).
+    -- "Sensing"  = players actively sensing RIGHT NOW.
+    -- This prevents the count bouncing to 0 every time someone briefly stops sensing.
 
-    local _wsLabels = {}
-    task.spawn(function()
-        task.wait(3)
-        local objs = Workspace:GetDescendants()
-        local CHUNK = 150
-        for i = 1, #objs, CHUNK do
-            for j = i, math.min(i + CHUNK - 1, #objs) do
-                local obj = objs[j]
-                if obj:IsA("TextLabel") or obj:IsA("TextButton") then _wsLabels[obj] = true end
-            end
-            task.wait()
-        end
-        table.insert(_conns, Workspace.DescendantAdded:Connect(function(obj)
-            if obj:IsA("TextLabel") or obj:IsA("TextButton") then _wsLabels[obj] = true end
-        end))
-    end)
+    local CS_STICKY_TTL = 30  -- seconds to remember a CS user after last seen sensing
+    local _csStickySet  = {}  -- [Player] = lastSeenSensingTick
+    local _csCache      = { total = 0, active = 0, lastScan = 0 }
 
-    local _csCache = { total = 0, active = 0, lastScan = 0 }
     local function getCSCounts()
-        local now = tick()
-        if now - _csCache.lastScan < 2 then return _csCache.total, _csCache.active end
+        local now  = tick()
+        if now - _csCache.lastScan < 0.5 then return _csCache.total, _csCache.active end
         _csCache.lastScan = now
-        local total, active = 0, 0
+
+        local _isWL = _G.MYA_BL_IsWL
+
+        -- 1. Update sticky set with current sensing state
         for _, p in ipairs(Players:GetPlayers()) do
             if p == localPlayer then continue end
-            local has, using = scanPlayerCS(p)
-            if using then has = true end
-            if has   then total  = total  + 1 end
-            if using then active = active + 1 end
-        end
-        pcall(function()
-            for _, gui in ipairs(localPlayer.PlayerGui:GetChildren()) do
-                local gn = gui.Name:lower()
-                if gn:find("mya") or gn:find("fluent") then continue end
-                for _, lbl in ipairs(gui:GetDescendants()) do
-                    if lbl:IsA("TextLabel") or lbl:IsA("TextButton") then
-                        total, active = scrapeCSText(lbl.Text:lower(), total, active)
-                    end
-                end
+            if _isWL and _isWL(p, "widgets") then continue end
+            if isSensing(p) then
+                _csStickySet[p] = now
             end
-        end)
-        for lbl in pairs(_wsLabels) do
-            if not lbl.Parent or not lbl:IsDescendantOf(Workspace) then _wsLabels[lbl] = nil; continue end
-            total, active = scrapeCSText(lbl.Text:lower(), total, active)
         end
-        _csCache.total = total; _csCache.active = active
+
+        -- 2. Expire old entries and count
+        local total, active = 0, 0
+        for p, lastSeen in pairs(_csStickySet) do
+            -- Remove if player left the server
+            if not Players:FindFirstChild(p.Name) then
+                _csStickySet[p] = nil
+                continue
+            end
+            -- Expire if not seen sensing for CS_STICKY_TTL seconds
+            if now - lastSeen > CS_STICKY_TTL then
+                _csStickySet[p] = nil
+                continue
+            end
+            total = total + 1
+            if isSensing(p) then active = active + 1 end
+        end
+
+        _csCache.total  = total
+        _csCache.active = active
         return total, active
     end
 
@@ -205,7 +163,7 @@ return function(ctx)
     local function initCSAlertDrawing()
         if _csAlertDrawing then pcall(function() _csAlertDrawing:Remove() end) end
         _csAlertDrawing = Drawing.new("Text")
-        _csAlertDrawing.Text = "⚠  CHAKRA SENSE  ⚠"
+        _csAlertDrawing.Text = "!! CHAKRA SENSE !!"
         _csAlertDrawing.Size = 20; _csAlertDrawing.Color = Color3.fromRGB(255, 55, 55)
         _csAlertDrawing.Outline = true; _csAlertDrawing.OutlineColor = Color3.fromRGB(0, 0, 0)
         _csAlertDrawing.Bold = true; _csAlertDrawing.Center = true
@@ -216,19 +174,59 @@ return function(ctx)
     csAlertSec:AddToggle("CSAlertEnable", { Title = "Show Alert When Sensed", Icon = "solar/eye-bold", Default = false, Callback = function(v) _csAlertEnabled = v; if v then initCSAlertDrawing() else if _csAlertDrawing then pcall(function() _csAlertDrawing.Visible = false end) end end end })
 
     -- Users Overlay
-    local usersEnabled = false
+    local usersEnabled    = false
     local usersLastUpdate = 0
-    local usersOv = nil
+    local usersOv         = nil
 
+    -- Hover tooltip: shows CS players with status colors
+    -- Orange = has CS (in sticky set, not currently sensing)
+    -- Red    = actively sensing right now
+    local hoverGui, hoverFrame, hoverLabel
+    local guiParent = (typeof(gethui) == "function" and gethui())
+        or localPlayer:WaitForChild("PlayerGui")
+
+    pcall(function()
+        hoverGui = Instance.new("ScreenGui")
+        hoverGui.Name = "MyaUsersHover"; hoverGui.ResetOnSpawn = false
+        hoverGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+        hoverGui.DisplayOrder   = 200; hoverGui.Enabled = false
+        pcall(function() hoverGui.IgnoreGuiInset = true end)
+        hoverGui.Parent = guiParent
+
+        hoverFrame = Instance.new("Frame")
+        hoverFrame.BackgroundColor3       = Color3.fromRGB(8, 8, 8)
+        hoverFrame.BackgroundTransparency = 0.15
+        hoverFrame.BorderSizePixel        = 0
+        hoverFrame.Position               = UDim2.fromOffset(200, 150)
+        pcall(function() hoverFrame.AutomaticSize = Enum.AutomaticSize.XY end)
+        hoverFrame.Parent = hoverGui
+
+        local corner = Instance.new("UICorner"); corner.CornerRadius = UDim.new(0, 8); corner.Parent = hoverFrame
+        local stroke = Instance.new("UIStroke"); stroke.Thickness = 1.5; stroke.Transparency = 0.3
+        pcall(function() stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border end)
+        stroke.Parent = hoverFrame
+        local pad = Instance.new("UIPadding")
+        pad.PaddingLeft   = UDim.new(0, 10); pad.PaddingRight  = UDim.new(0, 10)
+        pad.PaddingTop    = UDim.new(0, 7);  pad.PaddingBottom = UDim.new(0, 7)
+        pad.Parent = hoverFrame
+
+        hoverLabel = Instance.new("TextLabel")
+        hoverLabel.BackgroundTransparency = 1; hoverLabel.RichText = true
+        hoverLabel.Font          = Enum.Font.GothamSemibold
+        hoverLabel.TextSize      = 13
+        hoverLabel.TextColor3    = Color3.fromRGB(245, 245, 250)
+        hoverLabel.TextXAlignment = Enum.TextXAlignment.Left
+        hoverLabel.Size           = UDim2.new(0, 130, 0, 20)
+        pcall(function() hoverLabel.AutomaticSize = Enum.AutomaticSize.XY end)
+        hoverLabel.Parent = hoverFrame
+    end)
+
+    -- Loads widgets.luau and creates the Users overlay frame
     task.spawn(function()
         if typeof(baseUrl) ~= "string" or #baseUrl == 0 then return end
         local base = baseUrl:sub(-1) == "/" and baseUrl or baseUrl .. "/"
-        local variants = {
-            base .. "New_Mya/lib/widgets.luau",
-            base .. "lib/widgets.luau",
-        }
         local widgetsSrc
-        for _, url in ipairs(variants) do
+        for _, url in ipairs({ base.."New_Mya/lib/widgets.luau", base.."lib/widgets.luau" }) do
             local ok, body = pcall(function() return game:HttpGet(url, true) end)
             if ok and typeof(body) == "string" and #body > 100 then
                 local s = body:sub(1, 200):lower()
@@ -244,53 +242,183 @@ return function(ctx)
         if not ok or typeof(widgets) ~= "table" or not widgets.newOverlayFrame then return end
         pcall(function()
             usersOv = widgets.newOverlayFrame({
-                name = "MyaUsersOverlay", displayOrder = 198, defaultX = 14, defaultY = 150, posFile = "Mya/Bloodlines/users_pos.json",
+                name = "MyaUsersOverlay", displayOrder = 198,
+                defaultX = 14, defaultY = 150, posFile = "Mya/Bloodlines/users_pos.json",
                 Fluent = Fluent, UIS = UserInputService, textSize = 13, minWidth = 160,
-                padL = 14, padR = 14, padT = 8, padB = 8, accentColor = Color3.fromRGB(245, 92, 177), textAlign = Enum.TextXAlignment.Center,
+                padL = 14, padR = 14, padT = 8, padB = 8,
+                accentColor = Color3.fromRGB(245, 92, 177),
+                textAlign = Enum.TextXAlignment.Center,
             })
-            if usersOv and usersOv.label then usersOv.label.TextXAlignment = Enum.TextXAlignment.Center end
+            if usersOv and usersOv.label then
+                usersOv.label.TextXAlignment = Enum.TextXAlignment.Center
+            end
+            -- Remove the resize-handle TextButton added by newOverlayFrame.
+            task.defer(function()
+                if usersOv and usersOv.gui then
+                    for _, v in ipairs(usersOv.gui:GetDescendants()) do
+                        if v:IsA("TextButton") then pcall(function() v:Destroy() end) end
+                    end
+                end
+            end)
         end)
     end)
 
     local usersSec = miscTab:AddSection("Users")
-    usersSec:AddToggle("UsersOverlayEn", { Title = "Show Users Widget", Icon = "solar/users-group-rounded-bold", Default = false, Callback = function(v) usersEnabled = v; pcall(function() if usersOv and usersOv.gui then usersOv.gui.Enabled = v end end) end })
+    usersSec:AddToggle("UsersOverlayEn", {
+        Title = "Show Users Widget", Icon = "solar/users-group-rounded-bold", Default = false,
+        Callback = function(v)
+            usersEnabled = v
+            pcall(function() if usersOv and usersOv.gui then usersOv.gui.Enabled = v end end)
+            if not v and hoverGui then hoverGui.Enabled = false end
+        end,
+    })
 
-    local function h(c) return string.format("#%02x%02x%02x", math.clamp(math.floor(c.R*255),0,255), math.clamp(math.floor(c.G*255),0,255), math.clamp(math.floor(c.B*255),0,255)) end
+    local function h(c)
+        return string.format("#%02x%02x%02x",
+            math.clamp(math.floor(c.R*255),0,255),
+            math.clamp(math.floor(c.G*255),0,255),
+            math.clamp(math.floor(c.B*255),0,255))
+    end
+
+    local _csWasActive  = false
+    local _csLastNotify = 0
+    local CS_NOTIFY_CD  = 5
 
     local function update(data)
-        -- Alert Drawing
-        if _csAlertEnabled and _csAlertDrawing then
+        -- CS Alert
+        if _csAlertEnabled then
             local _, active = getCSCounts()
-            if active > 0 then
-                _csAlertDrawing.Position = Vector2.new(Workspace.CurrentCamera.ViewportSize.X / 2, Workspace.CurrentCamera.ViewportSize.Y / 2 - 100)
-                _csAlertDrawing.Visible = true
-            else
-                _csAlertDrawing.Visible = false
+            local isActive  = active > 0
+            if _csAlertDrawing then
+                if isActive then
+                    local cam = Workspace.CurrentCamera
+                    if cam then
+                        _csAlertDrawing.Position = Vector2.new(
+                            cam.ViewportSize.X * 0.5, cam.ViewportSize.Y * 0.5 - 100)
+                    end
+                    _csAlertDrawing.Visible = true
+                else
+                    _csAlertDrawing.Visible = false
+                end
             end
+            local now = tick()
+            if isActive and not _csWasActive and (now - _csLastNotify) >= CS_NOTIFY_CD then
+                _csLastNotify = now
+                pcall(function()
+                    Fluent:Notify({ Title = "Chakra Sense",
+                        Content = active .. " player" .. (active == 1 and " is" or "s are") .. " sensing",
+                        Duration = 4 })
+                end)
+            end
+            _csWasActive = isActive
         end
 
         -- Users Widget
-        if not usersEnabled or not (usersOv and usersOv.label) then return end
+        if not usersEnabled or not (usersOv and usersOv.label) then
+            if hoverGui then hoverGui.Enabled = false end
+            return
+        end
+
         local now = tick()
-        if now - usersLastUpdate < 0.3 then return end
-        usersLastUpdate = now
+        if now - usersLastUpdate < 0.3 then
+            -- Still update hover even between main ticks
+        else
+            usersLastUpdate = now
+            pcall(function()
+                local ts = themeSync
+                local ha = ts and h(ts.getAccent()) or "#f55cb1"
+                local ht = ts and h(ts.getText())   or "#f5f5fa"
+                local hm = ts and h(ts.getMuted())  or "#c8aad4"
+
+                local nearP, nearDist = getNearestPlayer()
+                local csTotal, csActive = getCSCounts()
+
+                local lines = { string.format('<font color="%s"><b>Users</b></font>', ha) }
+                if nearP then
+                    lines[#lines+1] = string.format(
+                        '<font color="%s">Nearest  </font><font color="%s">%s</font><font color="%s"> %.0fm</font>',
+                        hm, ht, nearP.Name, hm, nearDist)
+                else
+                    lines[#lines+1] = string.format('<font color="%s">Nearest  —</font>', hm)
+                end
+                lines[#lines+1] = string.format('<font color="%s">CS Users  </font><font color="%s">%d</font>', hm, ht, csTotal)
+                lines[#lines+1] = string.format('<font color="%s">Sensing   </font><font color="%s">%d</font>', hm, ht, csActive)
+
+                usersOv.label.Text = table.concat(lines, "\n")
+                usersOv.setAccent(ts and ts.getAccent() or Color3.fromRGB(245, 92, 177))
+            end)
+        end
+
+        -- ── Hover tooltip ─────────────────────────────────────────────────────────
+        -- Hide when there are no CS users at all (nothing to show).
+        if not (hoverGui and hoverFrame and hoverLabel and usersOv.label) then return end
+
+        local hasCSUsers = next(_csStickySet) ~= nil
+        if not hasCSUsers then
+            hoverGui.Enabled = false
+            return
+        end
+
         pcall(function()
-            local ts = themeSync
-            local ha = ts and h(ts.getAccent()) or "#f55cb1"
-            local ht = ts and h(ts.getText())   or "#f5f5fa"
-            local hm = ts and h(ts.getMuted())  or "#c8aad4"
+            local mouse = UserInputService:GetMouseLocation()
+            local lbl   = usersOv.label
 
-            local nearP, nearDist = getNearestPlayer()
-            local csTotal, csActive = getCSCounts()
+            -- Use label AbsolutePosition as the reliable anchor.
+            -- The widget frame surrounds the label with padL=14, padR=14, padT=8, padB=8.
+            local labAbs = lbl.AbsolutePosition
+            local labSz  = lbl.AbsoluteSize
 
-            local lines = { string.format('<font color="%s"><b>Users</b></font>', ha) }
-            if nearP then lines[#lines+1] = string.format('<font color="%s">Nearest  </font><font color="%s">%s</font><font color="%s"> %.0fm</font>', hm, ht, nearP.Name, hm, nearDist)
-            else lines[#lines+1] = string.format('<font color="%s">Nearest  —</font>', hm) end
-            lines[#lines+1] = string.format('<font color="%s">CS Users  </font><font color="%s">%d</font>', hm, ht, csTotal)
-            lines[#lines+1] = string.format('<font color="%s">Sensing   </font><font color="%s">%d</font>', hm, ht, csActive)
+            -- Hover area = full widget frame bounds (label + padding on all sides).
+            local hitL = labAbs.X - 14
+            local hitT = labAbs.Y - 8
+            local hitR = labAbs.X + labSz.X + 14
+            local hitB = labAbs.Y + labSz.Y + 8
 
-            usersOv.label.Text = table.concat(lines, "\n")
-            usersOv.setAccent(ts and ts.getAccent() or Color3.fromRGB(245, 92, 177))
+            local isOver = mouse.X >= hitL and mouse.X <= hitR
+                and mouse.Y >= hitT and mouse.Y <= hitB
+
+            if not isOver then
+                hoverGui.Enabled = false
+                return
+            end
+
+            -- Build hover content.
+            local ts  = themeSync
+            local ha  = ts and h(ts.getAccent()) or "#f55cb1"
+            local hLines = { string.format('<font color="%s"><b>CS Players</b></font>', ha) }
+
+            local entries = {}
+            for p in pairs(_csStickySet) do
+                if Players:FindFirstChild(p.Name) then entries[#entries + 1] = p end
+            end
+            table.sort(entries, function(a, b) return a.Name < b.Name end)
+
+            for _, p in ipairs(entries) do
+                local color = isSensing(p) and "#ff4040" or "#ff9900"
+                hLines[#hLines + 1] = string.format('<font color="%s">%s</font>', color, p.Name)
+            end
+
+            hoverLabel.Text = table.concat(hLines, "\n")
+
+            -- Position BELOW the widget: just under the bottom edge of the widget frame.
+            -- hitB = bottom edge; add a small gap.
+            local hx = math.floor(hitL)
+            local hy = math.floor(hitB + 6)
+
+            -- Clamp to viewport.
+            local cam = Workspace.CurrentCamera
+            if cam then
+                local vp  = cam.ViewportSize
+                local hSz = hoverFrame.AbsoluteSize
+                if hx + hSz.X > vp.X - 10 then hx = math.floor(vp.X - hSz.X - 10) end
+                if hy + hSz.Y > vp.Y - 10 then hy = math.floor(hitT - hSz.Y - 6) end
+            end
+            hoverFrame.Position = UDim2.fromOffset(hx, hy)
+
+            local strokeInst = hoverFrame:FindFirstChildWhichIsA("UIStroke")
+            if strokeInst and ts then strokeInst.Color = ts.getAccent() end
+
+            hoverGui.Enabled = true
         end)
     end
 
@@ -298,6 +426,7 @@ return function(ctx)
         for _, c in ipairs(_conns) do pcall(function() c:Disconnect() end) end
         if _csAlertDrawing then pcall(function() _csAlertDrawing:Remove() end) end
         if usersOv and usersOv.gui then pcall(function() usersOv.gui:Destroy() end) end
+        if hoverGui then pcall(function() hoverGui:Destroy() end) end
     end
 
     return { update = update, unmount = unmount }

@@ -242,42 +242,7 @@ return function(ctx)
         npcTpSec:AddButton({ Title = "Teleport", Icon = "solar/map-point-bold", Callback = function() if selNPC then tpTo(selNPC) end end })
     else npcTpSec:AddParagraph({ Title = "None found", Content = "No NPCs detected." }) end
 
-    -- Safe Point
-    local _safePoint = nil
-    local safeSec = teleportTab:AddSection("Safe Point")
-    safeSec:AddButton({ Title = "Save Current Position", Icon = "solar/map-point-wave-bold", Callback = function()
-        local hrp = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
-        if hrp then
-            _safePoint = hrp.Position
-            pcall(function() Fluent:Notify({ Title = "Safe Point Saved", Content = string.format("(%.0f, %.0f, %.0f)", _safePoint.X, _safePoint.Y, _safePoint.Z), Duration = 3 }) end)
-        end
-    end })
-    safeSec:AddButton({ Title = "Teleport to Safe Point", Icon = "solar/map-point-bold", Callback = function() if _safePoint then tpTo(_safePoint) end end })
-
-    -- Auto Teleport
-    local _autoTP = { enabled = false, threshold = 30 }
-    local autoTPSec = teleportTab:AddSection("Auto Teleport")
-    autoTPSec:AddToggle("AutoTPEnable", { Title = "Teleport on Low Health", Icon = "solar/heart-pulse-bold", Default = false, Callback = function(v) _autoTP.enabled = v end })
-    autoTPSec:AddSlider("AutoTPThreshold", { Title = "HP Threshold (%)", Default = 30, Min = 1, Max = 100, Rounding = 0, Callback = function(v) _autoTP.threshold = v end })
-
-    local function setupAutoTPWatcher(char)
-        if not char then return end
-        local hum = char:FindFirstChildWhichIsA("Humanoid")
-        if not hum then return end
-        local triggered = false
-        local c = hum.HealthChanged:Connect(function(hp)
-            if not _autoTP.enabled or not _safePoint then triggered = false; return end
-            local pct = (hp / math.max(hum.MaxHealth, 1)) * 100
-            if pct <= _autoTP.threshold and not triggered then
-                triggered = true
-                tpTo(_safePoint)
-                task.delay(4, function() triggered = false end)
-            end
-        end)
-        table.insert(_conns, c)
-    end
-    setupAutoTPWatcher(localPlayer.Character)
-    table.insert(_conns, localPlayer.CharacterAdded:Connect(function(char) task.wait(0.5); setupAutoTPWatcher(char) end))
+    -- Safe Point and Auto Teleport have been moved to the Security tab (Misc/Security.luau).
 
     local function update(data) end
     local function unmount()

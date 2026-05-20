@@ -104,22 +104,24 @@ return function(ctx)
 		end
 	end
 
-	local pingDisplay = 0
-	local pingClock   = os.clock() - 2
+	local pingDisplay    = 0
+	local pingFallClock  = os.clock() - 2   -- throttle only for expensive fallbacks
 
 	local function refreshPing()
-		local now = os.clock()
-		if now - pingClock < 1 then return end
-		pingClock = now
-		-- Primary: LocalPlayer:GetNetworkPing() — modern API, returns seconds → convert to ms.
+		-- Primary: GetNetworkPing() is cheap enough to call every frame.
 		local ok0, v0 = pcall(function() return localPlayer:GetNetworkPing() end)
-		if ok0 and type(v0) == "number" and v0 >= 0 then pingDisplay = math.floor(v0 * 1000) return end
-		-- Fallback 1: Stats.Network path (deprecated but still works on some games).
+		if ok0 and type(v0) == "number" and v0 >= 0 then
+			pingDisplay = math.floor(v0 * 1000)
+			return
+		end
+		-- Fallbacks are more expensive; only try once per second.
+		local now = os.clock()
+		if now - pingFallClock < 1 then return end
+		pingFallClock = now
 		local ok1, v1 = pcall(function()
 			return game:GetService("Stats").Network.ServerStatsItem["Data Ping"].Value
 		end)
 		if ok1 and type(v1) == "number" and v1 >= 0 then pingDisplay = math.floor(v1) return end
-		-- Fallback 2: scan Stats descendants for any StatsItem with "ping" in the name.
 		local ok2, v2 = pcall(function()
 			for _, d in ipairs(game:GetService("Stats"):GetDescendants()) do
 				if d:IsA("StatsItem") and d.Name:lower():find("ping") then return d.Value end

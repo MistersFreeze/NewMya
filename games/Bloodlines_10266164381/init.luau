@@ -95,15 +95,16 @@ function module.mount(ctx)
 	})
 	assert(Window and typeof(Window.AddTab) == "function", "Window creation failed.")
 
-	local visualsTab  = Window:AddTab({ Title = "Visuals",  Icon = "solar/eye-bold" })
-	local movementTab = Window:AddTab({ Title = "Movement", Icon = "solar/wind-bold" })
-	local playerTab   = Window:AddTab({ Title = "Player",   Icon = "solar/user-bold" })
-	local combatTab   = Window:AddTab({ Title = "Combat",   Icon = "solar/target-bold" })
-	local teleportTab = Window:AddTab({ Title = "Teleport", Icon = "solar/map-point-bold" })
-	local autoFarmTab = Window:AddTab({ Title = "AutoFarm", Icon = "solar/bolt-bold" })
-	local miscTab     = Window:AddTab({ Title = "Misc",     Icon = "solar/widget-5-bold" })
-	local configTab   = Window:AddTab({ Title = "Config",   Icon = "solar/diskette-bold" })
-	local settingsTab = Window:AddTab({ Title = "Settings", Icon = "solar/settings-bold" })
+	local visualsTab  = Window:AddTab({ Title = "Visuals",   Icon = "solar/eye-bold" })
+	local movementTab = Window:AddTab({ Title = "Movement",  Icon = "solar/wind-bold" })
+	local playerTab   = Window:AddTab({ Title = "Player",    Icon = "solar/user-bold" })
+	local teleportTab = Window:AddTab({ Title = "Teleport",  Icon = "solar/map-point-bold" })
+	local autoFarmTab = Window:AddTab({ Title = "AutoFarm",  Icon = "solar/bolt-bold" })
+	local securityTab = Window:AddTab({ Title = "Security",  Icon = "solar/shield-bold" })
+	local friendsTab  = Window:AddTab({ Title = "Friends",   Icon = "solar/users-group-rounded-bold" })
+	local miscTab     = Window:AddTab({ Title = "Misc",      Icon = "solar/widget-5-bold" })
+	local configTab   = Window:AddTab({ Title = "Config",    Icon = "solar/diskette-bold" })
+	local settingsTab = Window:AddTab({ Title = "Settings",  Icon = "solar/settings-bold" })
 
 	-- ── Shared helpers ────────────────────────────────────────────────────────────
 
@@ -323,8 +324,11 @@ function module.mount(ctx)
 		playerTab         = playerTab,
 		teleportTab       = teleportTab,
 		autoFarmTab       = autoFarmTab,
+		securityTab       = securityTab,
+		friendsTab        = friendsTab,
 		miscTab           = miscTab,
 		Fluent            = Fluent,
+		InterfaceManager  = InterfaceManager,
 		localPlayer       = localPlayer,
 		Players           = Players,
 		RunService        = RunService,
@@ -335,7 +339,6 @@ function module.mount(ctx)
 		makeBind          = makeBind,
 		isPlayerChar      = isPlayerChar,
 		getEntityKind     = getEntityKind,
-		combatTab         = combatTab,
 		baseUrl           = BASE_URL,
 	}
 
@@ -349,14 +352,19 @@ function module.mount(ctx)
 	local modules = {}
 	local MODULE_DEFS = {
 		{ path = "New_Mya/universal/Visuals/Watermark.luau",                           ctx = miscCtx },
-		{ path = "New_Mya/games/Bloodlines_10266164381/Visuals/Esp.luau" },
-		{ path = "New_Mya/games/Bloodlines_10266164381/Movement/LocalPlayer.luau" },
-		{ path = "New_Mya/games/Bloodlines_10266164381/Player/Combat.luau" },
-		{ path = "New_Mya/games/Bloodlines_10266164381/Combat/SilentAim.luau" },
+		{ path = "New_Mya/games/Bloodlines_10266164381/Visuals/Esp.luau"              },
+		{ path = "New_Mya/games/Bloodlines_10266164381/Visuals/RiftEsp.luau"          },
+		{ path = "New_Mya/games/Bloodlines_10266164381/Movement/LocalPlayer.luau"     },
+		{ path = "New_Mya/games/Bloodlines_10266164381/Player/Friends.luau"           },
+		{ path = "New_Mya/games/Bloodlines_10266164381/Player/Combat.luau"            },
+		{ path = "New_Mya/games/Bloodlines_10266164381/Player/AntiVoid.luau"          },
+		{ path = "New_Mya/games/Bloodlines_10266164381/Combat/Exploits.luau"          },
 		{ path = "New_Mya/games/Bloodlines_10266164381/Teleport/Waypoints.luau" },
-		{ path = "New_Mya/games/Bloodlines_10266164381/AutoFarm/SafeSpot.luau" },
-		{ path = "New_Mya/games/Bloodlines_10266164381/Misc/ChakraSense.luau" },
-		{ path = "New_Mya/games/Bloodlines_10266164381/Misc/StreamerMode.luau" },
+		{ path = "New_Mya/games/Bloodlines_10266164381/AutoFarm/SafeSpot.luau"  },
+		{ path = "New_Mya/games/Bloodlines_10266164381/Misc/Security.luau"      },
+		{ path = "New_Mya/games/Bloodlines_10266164381/Misc/ChakraSense.luau"  },
+		{ path = "New_Mya/games/Bloodlines_10266164381/Misc/StreamerMode.luau"         },
+		{ path = "New_Mya/games/Bloodlines_10266164381/Misc/PotatoMode.luau"           },
 		{ path = "New_Mya/universal/Visuals/KeybindDisplay.luau",                      ctx = miscCtx },
 	}
 
