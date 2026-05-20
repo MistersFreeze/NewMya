@@ -96,6 +96,7 @@ function module.mount(ctx)
 	assert(Window and typeof(Window.AddTab) == "function", "Window creation failed.")
 
 	local visualsTab  = Window:AddTab({ Title = "Visuals",   Icon = "solar/eye-bold" })
+	local combatTab   = Window:AddTab({ Title = "Combat",    Icon = "solar/swords-bold" })
 	local movementTab = Window:AddTab({ Title = "Movement",  Icon = "solar/wind-bold" })
 	local playerTab   = Window:AddTab({ Title = "Player",    Icon = "solar/user-bold" })
 	local teleportTab = Window:AddTab({ Title = "Teleport",  Icon = "solar/map-point-bold" })
@@ -320,6 +321,7 @@ function module.mount(ctx)
 
 	local ctx = {
 		visualsTab        = visualsTab,
+		combatTab         = combatTab,
 		movementTab       = movementTab,
 		playerTab         = playerTab,
 		teleportTab       = teleportTab,

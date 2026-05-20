@@ -154,7 +154,7 @@ return function(ctx)
 		}
 		applyFont(d, _curFont)
 		d.hpBg.Color     = Color3.fromRGB(30, 30, 30)
-		d.bloodBg.Color  = Color3.fromRGB(30, 30, 30)
+		d.bloodBg.Color  = Color3.fromRGB(160, 0, 0)
 		d.chakraBg.Color = Color3.fromRGB(30, 30, 30)
 		return d
 	end
@@ -591,16 +591,18 @@ return function(ctx)
 		renderHealthBar(d, x, topY, w, h, shared.hpPct, playerEsp.health and playerEsp.showBox)
 
 		if playerEsp.bloodBar and playerEsp.showBox then
-			local barW      = 4
-			local barX      = math.floor(x + w * 0.5) + 3
-			local barH_fill = math.floor(h * shared.hpPct)
+			local barW       = 4
+			local barX       = math.floor(x + w * 0.5) + 3
+			-- Gray overlay covers the DRAINED portion from the top down.
+			-- At 100% hp: drain = 0, all red visible. At 0% hp: drain = h, all gray.
+			local barH_drain = math.floor(h * (1 - shared.hpPct))
 			d.bloodBg.Size     = Vector2.new(barW, h)
 			d.bloodBg.Position = Vector2.new(barX, topY)
 			d.bloodBg.Visible  = true
-			if barH_fill > 0 then
-				d.bloodBar.Size     = Vector2.new(barW, barH_fill)
+			if barH_drain > 0 then
+				d.bloodBar.Size     = Vector2.new(barW, barH_drain)
 				d.bloodBar.Position = Vector2.new(barX, topY)
-				d.bloodBar.Color    = Color3.fromRGB(160, 0, 0)
+				d.bloodBar.Color    = Color3.fromRGB(30, 30, 30)
 				d.bloodBar.Visible  = true
 			else
 				if d.bloodBar.Visible then d.bloodBar.Visible = false end
