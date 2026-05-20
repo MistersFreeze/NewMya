@@ -12,10 +12,56 @@ return function(ctx)
 	local infChakra   = { enabled = false }
 	local autoSprint  = { enabled = false }
 	local allCooldowns = { enabled = false }
+	local castSpeed   = { value = "Default" }
 
 	local _noFallConns  = {}
 	local _stunConns    = {}
 	local _staminaCache = {}
+
+	-- ── Jutsu Speed Cache ─────────────────────────────────────────────────────────
+	
+	local _skillsModule = nil
+	local _originalHandsigns = {}
+
+	local function findSkillsModule()
+		if _skillsModule then return true end
+		if typeof(getgc) ~= "function" then return false end
+		local success = pcall(function()
+			for _, obj in ipairs(getgc(true)) do
+				if type(obj) == "table" and type(obj.Chidori) == "table" and type(obj.Rasengan) == "table" then
+					_skillsModule = obj
+					return true
+				end
+			end
+		end)
+		return success and _skillsModule ~= nil
+	end
+
+	local function applyInstantCast()
+		if not findSkillsModule() then return end
+		pcall(function()
+			for skillName, skillData in pairs(_skillsModule) do
+				if type(skillData) == "table" and type(skillData.Handsigns) == "number" then
+					if not _originalHandsigns[skillName] then
+						_originalHandsigns[skillName] = skillData.Handsigns
+					end
+					skillData.Handsigns = 0
+				end
+			end
+		end)
+	end
+
+	local function restoreInstantCast()
+		if not _skillsModule then return end
+		pcall(function()
+			for skillName, origVal in pairs(_originalHandsigns) do
+				if type(_skillsModule[skillName]) == "table" then
+					_skillsModule[skillName].Handsigns = origVal
+				end
+			end
+		end)
+		table.clear(_originalHandsigns)
+	end
 
 	-- ── No Fall Damage ────────────────────────────────────────────────────────────
 	-- Uses the game's own FallDamageImmunity attribute (line 6080 check in dump).
@@ -441,6 +487,26 @@ return function(ctx)
 		Callback = function(v) allCooldowns.enabled = v end,
 	})
 
+	local jutsuSec = playerTab:AddSection("Jutsu / Skills")
+	jutsuSec:AddDropdown("CastSpeedMode", {
+		Title = "Casting Speed",
+		Values = { "Default", "Fast (Safe)", "Instant (Risky)" },
+		Default = "Default",
+		NoSearch = true,
+		Callback = function(v)
+			castSpeed.value = v
+			if v == "Instant (Risky)" then
+				applyInstantCast()
+			else
+				restoreInstantCast()
+				if v == "Default" then
+					local char = localPlayer.Character
+					if char then pcall(function() char:SetAttribute("CombatFluidity", nil) end) end
+				end
+			end
+		end,
+	})
+
 	-- ── Character lifecycle ────────────────────────────────────────────────────────
 
 	local charAddedConn = localPlayer.CharacterAdded:Connect(function(char)
@@ -541,10 +607,25 @@ return function(ctx)
 				assertSprint(hum)
 			end
 		end
+
+		-- Fast Cast (Safe): continuously enforce CombatFluidity attribute.
+		-- The game naturally applies a -0.5 wait multiplier and +0.5 anim speed buff.
+		if castSpeed.value == "Fast (Safe)" then
+			local char = localPlayer.Character
+			if char then
+				pcall(function()
+					if char:GetAttribute("CombatFluidity") ~= 100 then
+						char:SetAttribute("CombatFluidity", 100)
+					end
+				end)
+			end
+		end
 	end
 
 	local function unmount()
 		restoreNoFallDmg()
+		restoreInstantCast()
+		if localPlayer.Character then pcall(function() localPlayer.Character:SetAttribute("CombatFluidity", nil) end) end
 		for _, c in ipairs(_stunConns) do pcall(function() c:Disconnect() end) end
 		stopAutoSprint()
 		stopInfStamina()
